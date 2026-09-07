@@ -1,0 +1,243 @@
+import S from './suguru.mjs';
+
+const { CELLS, MAXD, DIFFICULTIES, SINGLES_ONLY, KING, ORTH, bit } = S;
+const SAMPLES = Number(process.env.SAMPLES || 20);
+
+let failures = 0;
+let count = 0;
+
+function test(name, fn) {
+  count++;
+  try {
+    fn();
+    process.stdout.write(`  ok   ${name}\n`);
+  } catch (e) {
+    failures++;
+    process.stdout.write(`  FAIL ${name}\n       ${e.message}\n`);
+  }
+}
+
+function assert(cond, message) {
+  if (!cond) throw new Error(message);
+}
+
+function eq(a, b, message) {
+  if (a !== b) throw new Error(`${message}: expected ${b}, got ${a}`);
+}
+
+function connected(cells) {
+  const set = new Set(cells);
+  const seen = new Set([cells[0]]);
+  const queue = [cells[0]];
+  while (queue.length) {
+    for (const j of ORTH[queue.pop()]) {
+      if (set.has(j) && !seen.has(j)) {
+        seen.add(j);
+        queue.push(j);
+      }
+    }
+  }
+  return seen.size === cells.length;
+}
+
+const puzzles = {};
+for (const key of Object.keys(DIFFICULTIES)) {
+  puzzles[key] = Array.from({ length: SAMPLES }, () => S.generate(key));
+}
+const every = Object.entries(puzzles).flatMap(([key, list]) => list.map((p) => [key, p]));
+
+console.log(`suguru — ${SAMPLES} puzzles per difficulty\n`);
+
+test('every cell belongs to a region of 1..5 orthogonally connected cells', () => {
+  for (const [, p] of every) {
+    const layout = S.buildLayout(p.regions);
+    eq(layout.regionCells.flat().length, CELLS, 'cells covered');
+    for (const cells of layout.regionCells) {
+      assert(cells.length >= 1 && cells.length <= MAXD, `region size ${cells.length}`);
+      assert(connected(cells), `region ${cells} is not connected`);
+    }
+  }
+});
+
+test('each solution holds 1..n per region and no touching duplicates', () => {
+  for (const [, p] of every) {
+    const layout = S.buildLayout(p.regions);
+    layout.regionCells.forEach((cells, rid) => {
+      const digits = cells.map((i) => p.solution[i]).sort();
+      const wanted = cells.map((_, k) => k + 1);
+      eq(digits.join(''), wanted.join(''), `region ${rid} digits`);
+    });
+    for (let i = 0; i < CELLS; i++) {
+      for (const j of KING[i]) {
+        assert(p.solution[i] !== p.solution[j], `touching duplicate at ${i}/${j}`);
+      }
+    }
+    eq(S.conflicts(layout, p.solution).length, 0, 'conflicts in solution');
+  }
+});
+
+test('givens are a subset of the solution', () => {
+  for (const [, p] of every) {
+    for (let i = 0; i < CELLS; i++) {
+      assert(p.givens[i] === 0 || p.givens[i] === p.solution[i], `given ${i} disagrees`);
+    }
+    assert(p.givens.some((v) => v === 0), 'puzzle has no empty cells');
+  }
+});
+
+test('each puzzle is solvable by its own technique set, reaching the solution', () => {
+  for (const [key, p] of every) {
+    const layout = S.buildLayout(p.regions);
+    const result = S.solveLogically(layout, p.givens, DIFFICULTIES[key]);
+    assert(result.solved, `${key} puzzle not solvable by logic`);
+    eq(result.values.join(''), p.solution.join(''), `${key} logic solution`);
+  }
+});
+
+test('each puzzle has exactly one solution', () => {
+  for (const [key, p] of every) {
+    const layout = S.buildLayout(p.regions);
+    eq(S.searchSolutions(layout, p.givens, 2).length, 1, `${key} solution count`);
+  }
+});
+
+test('hard puzzles cannot be finished with singles alone', () => {
+  for (const p of puzzles.hard) {
+    const layout = S.buildLayout(p.regions);
+    assert(!S.solveLogically(layout, p.givens, SINGLES_ONLY).solved, 'hard puzzle was singles-only');
+  }
+});
+
+test('easy puzzles keep their clue floor', () => {
+  for (const p of puzzles.easy) {
+    assert(p.givens.filter((v) => v).length >= DIFFICULTIES.easy.minGivens, 'too few givens');
+  }
+});
+
+test('every hint along a full solve names a cell whose digit is the solution', () => {
+  for (const [key, p] of every) {
+    const layout = S.buildLayout(p.regions);
+    const board = p.givens.slice();
+    let steps = 0;
+    while (board.some((v) => !v)) {
+      const step = S.nextPlacement(layout, board, DIFFICULTIES[key]);
+      assert(step, `${key} ran out of hints with ${board.filter((v) => !v).length} cells left`);
+      eq(step.digit, p.solution[step.idx], `hint at cell ${step.idx}`);
+      assert(!board[step.idx], 'hint pointed at a filled cell');
+      board[step.idx] = step.digit;
+      steps++;
+    }
+    assert(steps > 0, 'no hints needed');
+  }
+});
+
+test('hints stay sound when the player has filled cells out of order', () => {
+  for (const [key, p] of every) {
+    const layout = S.buildLayout(p.regions);
+    for (let trial = 0; trial < 5; trial++) {
+      const board = p.givens.slice();
+      for (let i = 0; i < CELLS; i++) {
+        if (!board[i] && Math.random() < 0.4) board[i] = p.solution[i];
+      }
+      if (!board.some((v) => !v)) continue;
+      const step = S.nextPlacement(layout, board, DIFFICULTIES[key]);
+      if (!step) continue;
+      eq(step.digit, p.solution[step.idx], `hint at cell ${step.idx}`);
+    }
+  }
+});
+
+test('a digit press cycles value -> note -> value and notes accumulate', () => {
+  let cell = { value: 0, notes: 0 };
+  cell = S.applyDigit(cell, 3);
+  eq(cell.value, 3, 'first press fills');
+  eq(cell.notes, 0, 'first press leaves no note');
+  cell = S.applyDigit(cell, 3);
+  eq(cell.value, 0, 'second press empties the value');
+  eq(cell.notes, bit(3), 'second press notes the digit');
+  cell = S.applyDigit(cell, 3);
+  eq(cell.value, 3, 'a noted digit becomes filled again');
+  eq(cell.notes, 0, 'the note is consumed');
+
+  cell = { value: 0, notes: 0 };
+  for (const d of [2, 2, 4, 4, 5, 5]) cell = S.applyDigit(cell, d);
+  eq(cell.value, 0, 'notes only');
+  eq(cell.notes, bit(2) | bit(4) | bit(5), 'three notes coexist');
+
+  cell = S.applyDigit(cell, 1);
+  eq(cell.value, 1, 'a fresh digit fills over notes');
+  eq(cell.notes, bit(2) | bit(4) | bit(5), 'notes survive under a value');
+  cell = S.applyDigit(cell, 4);
+  eq(cell.value, 4, 'pressing a noted digit fills it');
+  eq(cell.notes, bit(2) | bit(5), 'that note is consumed');
+});
+
+test('conflicts flag both region and touching duplicates', () => {
+  const p = puzzles.medium[0];
+  const layout = S.buildLayout(p.regions);
+  eq(S.conflicts(layout, p.solution).length, 0, 'clean solution');
+
+  const region = layout.regionCells.find((cells) => cells.length >= 2);
+  const board = p.solution.slice();
+  board[region[1]] = p.solution[region[0]];
+  const bad = S.conflicts(layout, board);
+  assert(bad.includes(region[0]) && bad.includes(region[1]), 'duplicate in region not flagged');
+
+  const board2 = p.solution.slice();
+  let i = -1;
+  let j = -1;
+  for (let c = 0; c < CELLS && j < 0; c++) {
+    const other = KING[c].find((x) => layout.regions[x] !== layout.regions[c]);
+    if (other !== undefined) {
+      i = c;
+      j = other;
+    }
+  }
+  board2[j] = board2[i];
+  const touching = S.conflicts(layout, board2);
+  assert(touching.includes(i) && touching.includes(j), 'touching duplicate not flagged');
+});
+
+test('state survives a save/load round trip', () => {
+  const p = puzzles.easy[0];
+  const state = S.freshState(p);
+  eq(state.values.join(''), p.givens.join(''), 'fresh board starts from the givens');
+  const free = state.values.indexOf(0);
+  state.values[free] = 3;
+  state.notes[free] = bit(1) | bit(5);
+  state.selected = free;
+  state.undo.push([{ idx: free, value: 0, notes: 0 }]);
+
+  const back = S.deserialize(S.serialize(p, state));
+  assert(back, 'round trip returned null');
+  eq(back.puzzle.regions.join(''), p.regions.join(''), 'regions');
+  eq(back.puzzle.solution.join(''), p.solution.join(''), 'solution');
+  eq(back.state.values.join(''), state.values.join(''), 'values');
+  eq(back.state.notes.join(''), state.notes.join(''), 'notes');
+  eq(back.state.selected, free, 'selection');
+  eq(JSON.stringify(back.state.undo), JSON.stringify(state.undo), 'undo stack');
+});
+
+test('corrupt or foreign saved state is rejected rather than loaded', () => {
+  const p = puzzles.easy[0];
+  const good = S.serialize(p, S.freshState(p));
+  eq(S.deserialize(null), null, 'null');
+  eq(S.deserialize('not json'), null, 'garbage');
+  eq(S.deserialize(JSON.stringify({ version: 2, puzzle: p, state: S.freshState(p) })), null, 'other version');
+
+  const short = JSON.parse(good);
+  short.state.values.pop();
+  eq(S.deserialize(JSON.stringify(short)), null, 'wrong length');
+
+  const tampered = JSON.parse(good);
+  const givenIdx = p.givens.findIndex((v) => v > 0);
+  tampered.state.values[givenIdx] = 0;
+  eq(S.deserialize(JSON.stringify(tampered)), null, 'state that erased a given');
+
+  const outOfRange = JSON.parse(good);
+  outOfRange.state.values[p.givens.indexOf(0)] = 9;
+  eq(S.deserialize(JSON.stringify(outOfRange)), null, 'digit out of range');
+});
+
+console.log(`\n${count - failures}/${count} passed`);
+process.exit(failures ? 1 : 0);

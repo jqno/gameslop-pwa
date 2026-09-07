@@ -1,0 +1,3 @@
+This is a Suguru puzzle progressive web app.
+
+I totally vibecoded this. I'm sorry...

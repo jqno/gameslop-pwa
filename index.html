@@ -1,0 +1,1050 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Suguru</title>
+<meta name="description" content="A 7x9 Suguru puzzle that generates itself in your browser.">
+<meta name="theme-color" content="#0f1420">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Suguru">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root {
+  color-scheme: light dark;
+  /* One board size drives the grid, the keypad and the header. Cells are
+   * square, so the board is 7 cells wide and 9 tall; --chrome is the vertical
+   * space the rest of the page needs beside it. */
+  --chrome: 268px;
+  --board: min(94vw, 392px, max(200px, calc((100dvh - var(--chrome)) * 7 / 9)));
+  --cell: calc(var(--board) / 7);
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --ink: #1b2130;
+  --muted: #6b7382;
+  --line: #d3d8e2;
+  --edge: #2a3143;
+  --sel: #cfe0ff;
+  --peer: #e8f0ff;
+  --bad: #d64545;
+  --badbg: #fbe3e3;
+  --hint: #e08a00;
+  --hintbg: #ffeecc;
+  --given: #1b2130;
+  --user: #2358c8;
+  --btn: #ffffff;
+  --btnline: #ccd2dd;
+  --accent: #2358c8;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1420;
+    --panel: #161c2b;
+    --ink: #e7ebf3;
+    --muted: #8b95a8;
+    --line: #2b3346;
+    --edge: #8a94a8;
+    --sel: #2b456f;
+    --peer: #1d2740;
+    --bad: #ff7b7b;
+    --badbg: #45222a;
+    --hint: #ffb454;
+    --hintbg: #4a3413;
+    --given: #e7ebf3;
+    --user: #79a8ff;
+    --btn: #1c2334;
+    --btnline: #313a50;
+    --accent: #79a8ff;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
+  gap: 12px;
+  padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+header {
+  width: var(--board);
+  min-width: min-content;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+h1 { font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercase; }
+.seg { display: flex; border: 1px solid var(--btnline); border-radius: 9px; overflow: hidden; }
+.seg button {
+  border: 0; background: var(--btn); color: var(--muted);
+  font: inherit; font-size: 13px; padding: 7px 11px; cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--btnline); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.grid {
+  width: var(--board);
+  aspect-ratio: 7 / 9;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: repeat(9, 1fr);
+  background: var(--panel);
+  border-right: 3px solid var(--edge);
+  border-bottom: 3px solid var(--edge);
+  border-radius: 2px;
+}
+.cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  min-width: 0;
+}
+.cell .val {
+  font-size: calc(var(--cell) * .56);
+  font-weight: 500;
+  color: var(--user);
+}
+.cell.given .val { color: var(--given); font-weight: 700; }
+.cell .notes {
+  position: absolute;
+  inset: 6%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-content: center;
+  color: var(--muted);
+  font-size: calc(var(--cell) * .25);
+  line-height: 1.15;
+  font-style: normal;
+}
+.cell .notes i { font-style: normal; text-align: center; visibility: hidden; }
+.cell .notes i.on { visibility: visible; }
+.cell.filled .notes { display: none; }
+.cell.peer { background: var(--peer); }
+.cell.sel { background: var(--sel); }
+.cell.bad { background: var(--badbg); }
+.cell.bad .val { color: var(--bad); }
+.cell.hint { animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse {
+  0%, 100% { box-shadow: inset 0 0 0 2px var(--hint); background: var(--hintbg); }
+  50% { box-shadow: inset 0 0 0 4px var(--hint); background: var(--hintbg); }
+}
+.status { margin: 0; min-height: 20px; font-size: 14px; color: var(--muted); text-align: center; }
+.status.win { color: var(--accent); font-weight: 600; }
+.pad, .actions {
+  width: var(--board);
+  display: grid;
+  gap: 8px;
+}
+.pad { grid-template-columns: repeat(6, 1fr); }
+.actions { grid-template-columns: repeat(4, 1fr); }
+button.key {
+  font: inherit;
+  background: var(--btn);
+  color: var(--ink);
+  border: 1px solid var(--btnline);
+  border-radius: 10px;
+  padding: 12px 0;
+  min-height: 48px;
+  cursor: pointer;
+}
+button.key:active { background: var(--sel); }
+button.key:disabled { opacity: .4; cursor: default; }
+.pad button.key { font-size: 22px; font-weight: 600; }
+.actions button.key { font-size: 14px; }
+footer { font-size: 12px; color: var(--muted); }
+/* Short screens: drop the footnote and tighten the gaps so the board keeps
+ * as much height as possible. */
+@media (max-height: 680px) {
+  :root { --chrome: 216px; }
+  body { gap: 8px; }
+  footer { display: none; }
+}
+/* Landscape phones are too short for the board with the keypad below it, so
+ * wrap the column and let the controls sit beside the board instead. */
+@media (orientation: landscape) and (max-height: 620px) {
+  :root { --chrome: 64px; }
+  body { height: 100dvh; flex-wrap: wrap; align-content: center; gap: 8px 18px; }
+  .grid { order: -1; }
+  header { width: auto; gap: 18px; }
+  footer { display: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Suguru</h1>
+  <div class="seg" id="difficulty" role="group" aria-label="Difficulty"></div>
+</header>
+<div class="grid" id="grid"></div>
+<p class="status" id="status"></p>
+<div class="pad" id="pad"></div>
+<div class="actions">
+  <button class="key" id="undo" type="button">Undo</button>
+  <button class="key" id="clear" type="button">Clear</button>
+  <button class="key" id="hintbtn" type="button">Hint</button>
+  <button class="key" id="new" type="button">New</button>
+</div>
+<footer>Region = 1..n, no repeats touching, diagonals included.</footer>
+<script id="app">
+'use strict';
+
+/* ------------------------------------------------------------------ *
+ * Pure logic. Everything above init() runs without a DOM so that
+ * tools/test.mjs can evaluate this script in Node.
+ * ------------------------------------------------------------------ */
+
+var COLS = 7;
+var ROWS = 9;
+var CELLS = COLS * ROWS;
+var MAXD = 5;
+var STORAGE_KEY = 'suguru.v1';
+var UNDO_LIMIT = 200;
+
+var DIFFICULTIES = {
+  easy: { label: 'Easy', pairs: false, pointing: false, minGivens: 26 },
+  medium: { label: 'Medium', pairs: false, pointing: false, minGivens: 0 },
+  hard: { label: 'Hard', pairs: true, pointing: true, minGivens: 0 }
+};
+var SINGLES_ONLY = { pairs: false, pointing: false, minGivens: 0 };
+
+function neighbourTable(deltas) {
+  var table = [];
+  for (var i = 0; i < CELLS; i++) {
+    var r = Math.floor(i / COLS);
+    var c = i % COLS;
+    var list = [];
+    for (var d = 0; d < deltas.length; d++) {
+      var rr = r + deltas[d][0];
+      var cc = c + deltas[d][1];
+      if (rr >= 0 && rr < ROWS && cc >= 0 && cc < COLS) list.push(rr * COLS + cc);
+    }
+    table.push(list);
+  }
+  return table;
+}
+
+var KING = neighbourTable([[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]]);
+var ORTH = neighbourTable([[-1, 0], [1, 0], [0, -1], [0, 1]]);
+
+function bit(d) { return 1 << (d - 1); }
+
+function bitCount(mask) {
+  var n = 0;
+  while (mask) { mask &= mask - 1; n++; }
+  return n;
+}
+
+function bitsOf(mask) {
+  var out = [];
+  for (var d = 1; d <= MAXD; d++) {
+    if (mask & bit(d)) out.push(d);
+  }
+  return out;
+}
+
+function lowestDigit(mask) {
+  for (var d = 1; d <= MAXD; d++) {
+    if (mask & bit(d)) return d;
+  }
+  return 0;
+}
+
+function shuffle(a) {
+  for (var i = a.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var t = a[i];
+    a[i] = a[j];
+    a[j] = t;
+  }
+  return a;
+}
+
+function range(n) {
+  var out = [];
+  for (var i = 0; i < n; i++) out.push(i);
+  return out;
+}
+
+function combinations(items, k) {
+  var out = [];
+  var combo = [];
+  function walk(start) {
+    if (combo.length === k) {
+      out.push(combo.slice());
+      return;
+    }
+    for (var i = start; i < items.length; i++) {
+      combo.push(items[i]);
+      walk(i + 1);
+      combo.pop();
+    }
+  }
+  walk(0);
+  return out;
+}
+
+function buildLayout(regions) {
+  var count = 0;
+  for (var i = 0; i < CELLS; i++) {
+    if (regions[i] + 1 > count) count = regions[i] + 1;
+  }
+  var regionCells = [];
+  for (var r = 0; r < count; r++) regionCells.push([]);
+  for (var j = 0; j < CELLS; j++) regionCells[regions[j]].push(j);
+  var sizeOf = regionCells.map(function (cells) { return cells.length; });
+  return { regions: regions, regionCells: regionCells, sizeOf: sizeOf, count: count };
+}
+
+/* --- region partition ------------------------------------------------ */
+
+function leastFree(candidates, regions) {
+  var best = candidates[0];
+  var bestDeg = 99;
+  for (var i = 0; i < candidates.length; i++) {
+    var cell = candidates[i];
+    var deg = 0;
+    for (var k = 0; k < ORTH[cell].length; k++) {
+      if (regions[ORTH[cell][k]] < 0) deg++;
+    }
+    if (deg < bestDeg) {
+      bestDeg = deg;
+      best = cell;
+    }
+  }
+  return best;
+}
+
+function growPartition() {
+  var TARGETS = [5, 5, 5, 5, 4, 4, 3];
+  var regions = new Array(CELLS).fill(-1);
+  var id = 0;
+  for (;;) {
+    var free = [];
+    for (var i = 0; i < CELLS; i++) {
+      if (regions[i] < 0) free.push(i);
+    }
+    if (free.length === 0) break;
+    shuffle(free);
+    var seed = leastFree(free, regions);
+    var target = TARGETS[Math.floor(Math.random() * TARGETS.length)];
+    var cells = [seed];
+    regions[seed] = id;
+    while (cells.length < target) {
+      var frontier = [];
+      for (var c = 0; c < cells.length; c++) {
+        var nb = ORTH[cells[c]];
+        for (var k = 0; k < nb.length; k++) {
+          if (regions[nb[k]] < 0 && frontier.indexOf(nb[k]) < 0) frontier.push(nb[k]);
+        }
+      }
+      if (frontier.length === 0) break;
+      shuffle(frontier);
+      var pick = leastFree(frontier, regions);
+      regions[pick] = id;
+      cells.push(pick);
+    }
+    id++;
+  }
+  return regions;
+}
+
+/* A couple of one- or two-cell regions per board is fine — they make the
+ * shapes more varied — so stop rerolling as soon as a layout is within budget. */
+var SMALL_REGIONS = 2;
+
+function partition() {
+  var best = null;
+  var bestScore = Infinity;
+  for (var attempt = 0; attempt < 60; attempt++) {
+    var layout = buildLayout(growPartition());
+    var score = layout.sizeOf.filter(function (s) { return s < 3; }).length;
+    if (score < bestScore) {
+      bestScore = score;
+      best = layout;
+    }
+    if (score <= SMALL_REGIONS) break;
+  }
+  return best;
+}
+
+/* --- constraints ----------------------------------------------------- */
+
+function candidateMask(layout, values, i) {
+  var rid = layout.regions[i];
+  var mask = (1 << layout.sizeOf[rid]) - 1;
+  var cells = layout.regionCells[rid];
+  for (var c = 0; c < cells.length; c++) {
+    if (values[cells[c]]) mask &= ~bit(values[cells[c]]);
+  }
+  var nb = KING[i];
+  for (var k = 0; k < nb.length; k++) {
+    if (values[nb[k]]) mask &= ~bit(values[nb[k]]);
+  }
+  return mask;
+}
+
+function allCandidates(layout, values) {
+  var cand = new Array(CELLS);
+  for (var i = 0; i < CELLS; i++) {
+    cand[i] = values[i] ? 0 : candidateMask(layout, values, i);
+  }
+  return cand;
+}
+
+function conflicts(layout, values) {
+  var bad = {};
+  for (var i = 0; i < CELLS; i++) {
+    var d = values[i];
+    if (!d) continue;
+    if (d > layout.sizeOf[layout.regions[i]]) bad[i] = true;
+    var cells = layout.regionCells[layout.regions[i]];
+    for (var c = 0; c < cells.length; c++) {
+      if (cells[c] !== i && values[cells[c]] === d) {
+        bad[i] = true;
+        bad[cells[c]] = true;
+      }
+    }
+    var nb = KING[i];
+    for (var k = 0; k < nb.length; k++) {
+      if (values[nb[k]] === d) {
+        bad[i] = true;
+        bad[nb[k]] = true;
+      }
+    }
+  }
+  return Object.keys(bad).map(Number);
+}
+
+/* --- brute force search (generation + test-only uniqueness checks) ---- */
+
+/* cap bounds the node count: a random region layout is often unfillable, and
+ * abandoning a hopeless one quickly is cheaper than proving it hopeless. */
+function searchSolutions(layout, values, limit, cap) {
+  var v = values.slice();
+  var found = [];
+  var budget = cap === undefined ? Infinity : cap;
+  var nodes = 0;
+  function step() {
+    if (++nodes > budget) return true;
+    var bestI = -1;
+    var bestMask = 0;
+    var bestCount = 99;
+    for (var i = 0; i < CELLS; i++) {
+      if (v[i]) continue;
+      var mask = candidateMask(layout, v, i);
+      var n = bitCount(mask);
+      if (n === 0) return false;
+      if (n < bestCount) {
+        bestCount = n;
+        bestI = i;
+        bestMask = mask;
+      }
+    }
+    if (bestI < 0) {
+      found.push(v.slice());
+      return found.length >= limit;
+    }
+    var digits = shuffle(bitsOf(bestMask));
+    for (var d = 0; d < digits.length; d++) {
+      v[bestI] = digits[d];
+      if (step()) {
+        v[bestI] = 0;
+        return true;
+      }
+      v[bestI] = 0;
+    }
+    return false;
+  }
+  step();
+  return found;
+}
+
+/* --- human techniques ------------------------------------------------ */
+
+function nakedSubsets(layout, values, cand) {
+  var changed = false;
+  for (var rid = 0; rid < layout.count; rid++) {
+    var open = layout.regionCells[rid].filter(function (i) { return !values[i]; });
+    for (var size = 2; size <= 3; size++) {
+      if (open.length <= size) continue;
+      var combos = combinations(open, size);
+      for (var c = 0; c < combos.length; c++) {
+        var combo = combos[c];
+        var union = 0;
+        for (var m = 0; m < combo.length; m++) union |= cand[combo[m]];
+        if (bitCount(union) !== size) continue;
+        for (var o = 0; o < open.length; o++) {
+          var cell = open[o];
+          if (combo.indexOf(cell) >= 0) continue;
+          var next = cand[cell] & ~union;
+          if (next !== cand[cell]) {
+            cand[cell] = next;
+            changed = true;
+          }
+        }
+      }
+    }
+  }
+  return changed;
+}
+
+function pointing(layout, values, cand) {
+  var changed = false;
+  for (var rid = 0; rid < layout.count; rid++) {
+    var cells = layout.regionCells[rid];
+    for (var d = 1; d <= layout.sizeOf[rid]; d++) {
+      var placed = false;
+      for (var c = 0; c < cells.length; c++) {
+        if (values[cells[c]] === d) placed = true;
+      }
+      if (placed) continue;
+      var spots = cells.filter(function (i) { return !values[i] && (cand[i] & bit(d)); });
+      if (spots.length === 0) continue;
+      var targets = KING[spots[0]].filter(function (x) {
+        return layout.regions[x] !== rid && !values[x] && (cand[x] & bit(d));
+      });
+      for (var s = 1; s < spots.length && targets.length; s++) {
+        targets = targets.filter(function (x) { return KING[spots[s]].indexOf(x) >= 0; });
+      }
+      for (var t = 0; t < targets.length; t++) {
+        cand[targets[t]] &= ~bit(d);
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
+/* Returns the next cell that can be placed by logic alone, or null. */
+function nextPlacement(layout, values, opts) {
+  var cand = allCandidates(layout, values);
+  for (;;) {
+    for (var i = 0; i < CELLS; i++) {
+      if (values[i]) continue;
+      if (cand[i] === 0) return null;
+      if (bitCount(cand[i]) === 1) {
+        return { idx: i, digit: lowestDigit(cand[i]), technique: 'naked single' };
+      }
+    }
+    for (var rid = 0; rid < layout.count; rid++) {
+      var cells = layout.regionCells[rid];
+      for (var d = 1; d <= layout.sizeOf[rid]; d++) {
+        var placed = false;
+        for (var c = 0; c < cells.length; c++) {
+          if (values[cells[c]] === d) placed = true;
+        }
+        if (placed) continue;
+        var spots = cells.filter(function (x) { return !values[x] && (cand[x] & bit(d)); });
+        if (spots.length === 0) return null;
+        if (spots.length === 1) {
+          return { idx: spots[0], digit: d, technique: 'hidden single' };
+        }
+      }
+    }
+    var changed = false;
+    if (opts.pairs && nakedSubsets(layout, values, cand)) changed = true;
+    if (opts.pointing && pointing(layout, values, cand)) changed = true;
+    if (!changed) return null;
+  }
+}
+
+function solveLogically(layout, values, opts) {
+  var v = values.slice();
+  for (;;) {
+    var empty = -1;
+    for (var i = 0; i < CELLS; i++) {
+      if (!v[i]) {
+        empty = i;
+        break;
+      }
+    }
+    if (empty < 0) return { values: v, solved: true };
+    var step = nextPlacement(layout, v, opts);
+    if (!step) return { values: v, solved: false };
+    v[step.idx] = step.digit;
+  }
+}
+
+/* --- generation ------------------------------------------------------ */
+
+function carve(layout, solution, opts) {
+  var givens = solution.slice();
+  var count = CELLS;
+  var order = shuffle(range(CELLS));
+  for (var o = 0; o < order.length; o++) {
+    if (count <= opts.minGivens) break;
+    var i = order[o];
+    givens[i] = 0;
+    if (solveLogically(layout, givens, opts).solved) {
+      count--;
+    } else {
+      givens[i] = solution[i];
+    }
+  }
+  return givens;
+}
+
+/* Most random layouts cannot be filled at all under the touching rule, so
+ * keep drawing layouts until one takes a full grid of digits. */
+function findFilledLayout() {
+  var cap = 2000;
+  for (var attempt = 1; attempt <= 2000; attempt++) {
+    var layout = partition();
+    var solutions = searchSolutions(layout, new Array(CELLS).fill(0), 1, cap);
+    if (solutions.length) return { layout: layout, solution: solutions[0] };
+    if (attempt % 200 === 0) cap *= 4;
+  }
+  throw new Error('could not generate a puzzle');
+}
+
+function generate(difficulty) {
+  var key = DIFFICULTIES[difficulty] ? difficulty : 'medium';
+  var opts = DIFFICULTIES[key];
+  var needsAdvanced = opts.pairs || opts.pointing;
+  var fallback = null;
+  for (var attempt = 0; attempt < 8; attempt++) {
+    var filled = findFilledLayout();
+    var puzzle = {
+      regions: filled.layout.regions.slice(),
+      givens: carve(filled.layout, filled.solution, opts),
+      solution: filled.solution,
+      difficulty: key
+    };
+    fallback = puzzle;
+    if (!needsAdvanced) return puzzle;
+    /* A hard puzzle should actually need a hard technique. */
+    if (!solveLogically(filled.layout, puzzle.givens, SINGLES_ONLY).solved) return puzzle;
+  }
+  return fallback;
+}
+
+/* --- player input ---------------------------------------------------- */
+
+/* Press digit d on a cell: value -> note -> value, notes accumulate. */
+function applyDigit(cell, d) {
+  if (cell.value === d) return { value: 0, notes: cell.notes | bit(d) };
+  if (cell.notes & bit(d)) return { value: d, notes: cell.notes & ~bit(d) };
+  return { value: d, notes: cell.notes };
+}
+
+/* --- persistence ----------------------------------------------------- */
+
+function isDigitArray(a, max) {
+  if (!Array.isArray(a) || a.length !== CELLS) return false;
+  for (var i = 0; i < CELLS; i++) {
+    if (!Number.isInteger(a[i]) || a[i] < 0 || a[i] > max) return false;
+  }
+  return true;
+}
+
+function serialize(puzzle, state) {
+  return JSON.stringify({
+    version: 1,
+    puzzle: puzzle,
+    state: { values: state.values, notes: state.notes, selected: state.selected, undo: state.undo }
+  });
+}
+
+function deserialize(text) {
+  if (!text) return null;
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+  if (!data || data.version !== 1 || !data.puzzle || !data.state) return null;
+  var p = data.puzzle;
+  var s = data.state;
+  if (!isDigitArray(p.regions, CELLS - 1)) return null;
+  if (!isDigitArray(p.givens, MAXD)) return null;
+  if (!isDigitArray(p.solution, MAXD)) return null;
+  if (!DIFFICULTIES[p.difficulty]) return null;
+  if (!isDigitArray(s.values, MAXD)) return null;
+  if (!isDigitArray(s.notes, 31)) return null;
+  if (!Array.isArray(s.undo)) return null;
+  for (var i = 0; i < CELLS; i++) {
+    if (p.givens[i] && s.values[i] !== p.givens[i]) return null;
+  }
+  var selected = Number.isInteger(s.selected) && s.selected >= 0 && s.selected < CELLS ? s.selected : null;
+  return {
+    puzzle: p,
+    state: { values: s.values, notes: s.notes, selected: selected, undo: s.undo.slice(-UNDO_LIMIT) }
+  };
+}
+
+function freshState(puzzle) {
+  return { values: puzzle.givens.slice(), notes: new Array(CELLS).fill(0), selected: null, undo: [] };
+}
+
+/* ------------------------------------------------------------------ *
+ * UI
+ * ------------------------------------------------------------------ */
+
+function init() {
+  var gridEl = document.getElementById('grid');
+  var padEl = document.getElementById('pad');
+  var statusEl = document.getElementById('status');
+  var diffEl = document.getElementById('difficulty');
+
+  var puzzle = null;
+  var layout = null;
+  var state = null;
+  var hintCells = [];
+  var mistakeArmed = false;
+  var cellEls = [];
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, serialize(puzzle, state));
+    } catch (e) {
+      /* private mode / quota: the game still works, it just forgets. */
+    }
+  }
+
+  function load() {
+    try {
+      return deserialize(localStorage.getItem(STORAGE_KEY));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function buildGrid() {
+    gridEl.textContent = '';
+    cellEls = [];
+    for (var i = 0; i < CELLS; i++) {
+      var r = Math.floor(i / COLS);
+      var c = i % COLS;
+      var el = document.createElement('div');
+      el.className = 'cell';
+      el.dataset.idx = String(i);
+      var topEdge = r === 0 || puzzle.regions[i - COLS] !== puzzle.regions[i];
+      var leftEdge = c === 0 || puzzle.regions[i - 1] !== puzzle.regions[i];
+      el.style.borderTop = topEdge ? '3px solid var(--edge)' : '1px solid var(--line)';
+      el.style.borderLeft = leftEdge ? '3px solid var(--edge)' : '1px solid var(--line)';
+      var val = document.createElement('span');
+      val.className = 'val';
+      var notes = document.createElement('span');
+      notes.className = 'notes';
+      for (var d = 1; d <= MAXD; d++) {
+        var note = document.createElement('i');
+        note.textContent = String(d);
+        notes.appendChild(note);
+      }
+      el.appendChild(notes);
+      el.appendChild(val);
+      gridEl.appendChild(el);
+      cellEls.push(el);
+    }
+  }
+
+  function render() {
+    var bad = conflicts(layout, state.values);
+    var selectedValue = state.selected !== null ? state.values[state.selected] : 0;
+    for (var i = 0; i < CELLS; i++) {
+      var el = cellEls[i];
+      var value = state.values[i];
+      el.querySelector('.val').textContent = value ? String(value) : '';
+      var noteEls = el.querySelectorAll('.notes i');
+      for (var d = 1; d <= MAXD; d++) {
+        noteEls[d - 1].className = (state.notes[i] & bit(d)) ? 'on' : '';
+      }
+      el.classList.toggle('filled', !!value);
+      el.classList.toggle('given', !!puzzle.givens[i]);
+      el.classList.toggle('sel', state.selected === i);
+      el.classList.toggle('peer', !!selectedValue && value === selectedValue && state.selected !== i);
+      el.classList.toggle('bad', bad.indexOf(i) >= 0);
+      el.classList.toggle('hint', hintCells.indexOf(i) >= 0);
+    }
+    document.getElementById('undo').disabled = state.undo.length === 0;
+    var filled = state.values.every(function (v) { return v > 0; });
+    if (filled && bad.length === 0) {
+      statusEl.textContent = 'Solved. Nice one.';
+      statusEl.className = 'status win';
+    } else if (statusEl.className === 'status win') {
+      statusEl.textContent = '';
+      statusEl.className = 'status';
+    }
+  }
+
+  function setStatus(text) {
+    statusEl.textContent = text;
+    statusEl.className = 'status';
+  }
+
+  function pushUndo(cells) {
+    state.undo.push(cells);
+    if (state.undo.length > UNDO_LIMIT) state.undo.shift();
+  }
+
+  function clearHint() {
+    hintCells = [];
+    mistakeArmed = false;
+  }
+
+  function pressDigit(d) {
+    if (state.selected === null) {
+      setStatus('Pick a cell first.');
+      return;
+    }
+    var i = state.selected;
+    if (puzzle.givens[i]) {
+      setStatus('That cell is part of the puzzle.');
+      return;
+    }
+    var next = applyDigit({ value: state.values[i], notes: state.notes[i] }, d);
+    pushUndo([{ idx: i, value: state.values[i], notes: state.notes[i] }]);
+    state.values[i] = next.value;
+    state.notes[i] = next.notes;
+    clearHint();
+    setStatus('');
+    save();
+    render();
+  }
+
+  function erase() {
+    if (state.selected === null) return;
+    var i = state.selected;
+    if (puzzle.givens[i]) return;
+    if (!state.values[i] && !state.notes[i]) return;
+    pushUndo([{ idx: i, value: state.values[i], notes: state.notes[i] }]);
+    state.values[i] = 0;
+    state.notes[i] = 0;
+    clearHint();
+    setStatus('');
+    save();
+    render();
+  }
+
+  function undo() {
+    var entry = state.undo.pop();
+    if (!entry) return;
+    for (var c = 0; c < entry.length; c++) {
+      state.values[entry[c].idx] = entry[c].value;
+      state.notes[entry[c].idx] = entry[c].notes;
+    }
+    clearHint();
+    setStatus('');
+    save();
+    render();
+  }
+
+  function clearBoard() {
+    var touched = [];
+    for (var i = 0; i < CELLS; i++) {
+      if (puzzle.givens[i]) continue;
+      if (!state.values[i] && !state.notes[i]) continue;
+      touched.push({ idx: i, value: state.values[i], notes: state.notes[i] });
+    }
+    if (touched.length === 0) return;
+    if (!confirm('Clear your entries and start this puzzle again?')) return;
+    for (var t = 0; t < touched.length; t++) {
+      state.values[touched[t].idx] = 0;
+      state.notes[touched[t].idx] = 0;
+    }
+    pushUndo(touched);
+    clearHint();
+    setStatus('');
+    save();
+    render();
+  }
+
+  function hint() {
+    var wrong = [];
+    for (var i = 0; i < CELLS; i++) {
+      if (state.values[i] && state.values[i] !== puzzle.solution[i]) wrong.push(i);
+    }
+    if (wrong.length) {
+      if (mistakeArmed) {
+        hintCells = wrong;
+        setStatus(wrong.length === 1 ? 'This cell is wrong.' : 'These cells are wrong.');
+      } else {
+        hintCells = [];
+        mistakeArmed = true;
+        setStatus('Something on the board is wrong. Press Hint again to see where.');
+      }
+      render();
+      return;
+    }
+    mistakeArmed = false;
+    var step = nextPlacement(layout, state.values, DIFFICULTIES[puzzle.difficulty]);
+    if (step) {
+      hintCells = [step.idx];
+      setStatus('This cell can be worked out (' + step.technique + ').');
+      render();
+      return;
+    }
+    var empty = state.values.indexOf(0);
+    if (empty < 0) {
+      setStatus('The grid is already full.');
+      render();
+      return;
+    }
+    hintCells = [empty];
+    setStatus('This cell can be worked out.');
+    render();
+  }
+
+  function startPuzzle(newPuzzle) {
+    puzzle = newPuzzle;
+    layout = buildLayout(puzzle.regions);
+    state = freshState(puzzle);
+    clearHint();
+    buildGrid();
+    renderDifficulty();
+    save();
+    render();
+  }
+
+  function newPuzzle(difficulty) {
+    setStatus('Generating...');
+    statusEl.className = 'status';
+    /* Let the status paint before the synchronous generator blocks. */
+    setTimeout(function () {
+      startPuzzle(generate(difficulty));
+      setStatus('');
+    }, 20);
+  }
+
+  function hasProgress() {
+    for (var i = 0; i < CELLS; i++) {
+      if (puzzle.givens[i]) continue;
+      if (state.values[i] || state.notes[i]) return true;
+    }
+    return false;
+  }
+
+  function renderDifficulty() {
+    var buttons = diffEl.querySelectorAll('button');
+    for (var b = 0; b < buttons.length; b++) {
+      buttons[b].setAttribute('aria-pressed', String(buttons[b].dataset.diff === puzzle.difficulty));
+    }
+  }
+
+  /* --- wiring --- */
+
+  Object.keys(DIFFICULTIES).forEach(function (key) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = DIFFICULTIES[key].label;
+    b.dataset.diff = key;
+    b.addEventListener('click', function () {
+      if (key === puzzle.difficulty && !hasProgress()) return;
+      if (hasProgress() && !confirm('Start a new ' + DIFFICULTIES[key].label.toLowerCase() + ' puzzle? This one will be lost.')) return;
+      newPuzzle(key);
+    });
+    diffEl.appendChild(b);
+  });
+
+  for (var d = 1; d <= MAXD; d++) {
+    (function (digit) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'key';
+      b.textContent = String(digit);
+      b.addEventListener('click', function () { pressDigit(digit); });
+      padEl.appendChild(b);
+    })(d);
+  }
+  var eraseBtn = document.createElement('button');
+  eraseBtn.type = 'button';
+  eraseBtn.className = 'key';
+  eraseBtn.textContent = '⌫';
+  eraseBtn.setAttribute('aria-label', 'Erase');
+  eraseBtn.addEventListener('click', erase);
+  padEl.appendChild(eraseBtn);
+
+  gridEl.addEventListener('click', function (ev) {
+    var cell = ev.target.closest('.cell');
+    if (!cell) return;
+    state.selected = Number(cell.dataset.idx);
+    clearHint();
+    save();
+    render();
+  });
+
+  document.getElementById('undo').addEventListener('click', undo);
+  document.getElementById('clear').addEventListener('click', clearBoard);
+  document.getElementById('hintbtn').addEventListener('click', hint);
+  document.getElementById('new').addEventListener('click', function () {
+    if (hasProgress() && !confirm('Start a new puzzle? This one will be lost.')) return;
+    newPuzzle(puzzle.difficulty);
+  });
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    if (ev.key >= '1' && ev.key <= '5') {
+      pressDigit(Number(ev.key));
+      ev.preventDefault();
+      return;
+    }
+    if (ev.key === 'Backspace' || ev.key === 'Delete' || ev.key === '0') {
+      erase();
+      ev.preventDefault();
+      return;
+    }
+    if (ev.key === 'u') {
+      undo();
+      return;
+    }
+    if (ev.key === 'h') {
+      hint();
+      return;
+    }
+    var move = { ArrowUp: -COLS, ArrowDown: COLS, ArrowLeft: -1, ArrowRight: 1 }[ev.key];
+    if (move === undefined) return;
+    ev.preventDefault();
+    var from = state.selected === null ? 0 : state.selected;
+    var col = from % COLS;
+    if (move === -1 && col === 0) return;
+    if (move === 1 && col === COLS - 1) return;
+    var to = from + (state.selected === null ? 0 : move);
+    if (to < 0 || to >= CELLS) return;
+    state.selected = to;
+    clearHint();
+    save();
+    render();
+  });
+
+  var restored = load();
+  if (restored) {
+    puzzle = restored.puzzle;
+    layout = buildLayout(puzzle.regions);
+    state = restored.state;
+    buildGrid();
+    renderDifficulty();
+    render();
+  } else {
+    startPuzzle(generate('medium'));
+  }
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function () {
+        /* file:// or no HTTPS: the app runs fine, it just is not installable. */
+      });
+    });
+  }
+}
+
+if (typeof document !== 'undefined') init();
+</script>
+</body>
+</html>
