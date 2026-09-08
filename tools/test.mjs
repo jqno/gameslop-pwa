@@ -159,17 +159,23 @@ test('a digit press cycles value -> note -> value and notes accumulate', () => {
   eq(cell.value, 3, 'a noted digit becomes filled again');
   eq(cell.notes, 0, 'the note is consumed');
 
+  /* Once a cell is in note mode, further digits note themselves on one press. */
   cell = { value: 0, notes: 0 };
-  for (const d of [2, 2, 4, 4, 5, 5]) cell = S.applyDigit(cell, d);
-  eq(cell.value, 0, 'notes only');
+  cell = S.applyDigit(cell, 2);
+  cell = S.applyDigit(cell, 2);
+  eq(cell.notes, bit(2), 'two presses open the notes');
+  cell = S.applyDigit(cell, 4);
+  eq(cell.value, 0, 'a further digit does not fill the cell');
+  eq(cell.notes, bit(2) | bit(4), 'a further digit notes itself at once');
+  cell = S.applyDigit(cell, 5);
   eq(cell.notes, bit(2) | bit(4) | bit(5), 'three notes coexist');
 
-  cell = S.applyDigit(cell, 1);
-  eq(cell.value, 1, 'a fresh digit fills over notes');
-  eq(cell.notes, bit(2) | bit(4) | bit(5), 'notes survive under a value');
   cell = S.applyDigit(cell, 4);
   eq(cell.value, 4, 'pressing a noted digit fills it');
   eq(cell.notes, bit(2) | bit(5), 'that note is consumed');
+  cell = S.applyDigit(cell, 1);
+  eq(cell.value, 1, 'a filled cell takes a new digit as its value');
+  eq(cell.notes, bit(2) | bit(5), 'notes survive under a value');
 });
 
 test('conflicts flag both region and touching duplicates', () => {

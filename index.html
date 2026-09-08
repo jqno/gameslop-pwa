@@ -28,7 +28,6 @@
   --line: #d3d8e2;
   --edge: #2a3143;
   --sel: #cfe0ff;
-  --peer: #e8f0ff;
   --bad: #d64545;
   --badbg: #fbe3e3;
   --hint: #e08a00;
@@ -48,7 +47,6 @@
     --line: #2b3346;
     --edge: #8a94a8;
     --sel: #2b456f;
-    --peer: #1d2740;
     --bad: #ff7b7b;
     --badbg: #45222a;
     --hint: #ffb454;
@@ -97,8 +95,8 @@ h1 { font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercas
 .seg button + button { border-left: 1px solid var(--btnline); }
 .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
 .grid {
-  width: var(--board);
-  aspect-ratio: 7 / 9;
+  position: absolute;
+  inset: 0;
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   grid-template-rows: repeat(9, 1fr);
@@ -135,7 +133,6 @@ h1 { font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercas
 .cell .notes i { font-style: normal; text-align: center; visibility: hidden; }
 .cell .notes i.on { visibility: visible; }
 .cell.filled .notes { display: none; }
-.cell.peer { background: var(--peer); }
 .cell.sel { background: var(--sel); }
 .cell.bad { background: var(--badbg); }
 .cell.bad .val { color: var(--bad); }
@@ -152,7 +149,10 @@ h1 { font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercas
   gap: 8px;
 }
 .pad { grid-template-columns: repeat(6, 1fr); }
-.actions { grid-template-columns: repeat(4, 1fr); }
+/* Undo and Hint help you play; Restart and New throw the game away. The rule
+ * between them says which is which. */
+.actions { grid-template-columns: 1fr 1fr auto 1fr 1fr; }
+.sep { width: 1px; margin: 6px 3px; background: var(--btnline); border-radius: 1px; }
 button.key {
   font: inherit;
   background: var(--btn);
@@ -175,12 +175,44 @@ footer { font-size: 12px; color: var(--muted); }
   body { gap: 8px; }
   footer { display: none; }
 }
+.board { position: relative; width: var(--board); aspect-ratio: 7 / 9; }
+.banner {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 12, 22, .45);
+  border-radius: 2px;
+}
+.board.won .banner { display: flex; }
+.banner > div {
+  width: 80%;
+  height: 80%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--board) * .04);
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 18px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .35);
+  animation: pop .3s ease-out;
+}
+.banner strong { font-size: calc(var(--board) * .17); line-height: 1; color: var(--accent); }
+.banner span { font-size: calc(var(--board) * .05); color: var(--muted); }
+.banner button { padding: 10px 18px; font-size: calc(var(--board) * .04); }
+@keyframes pop {
+  from { opacity: 0; transform: scale(.85); }
+  to { opacity: 1; transform: none; }
+}
 /* Landscape phones are too short for the board with the keypad below it, so
  * wrap the column and let the controls sit beside the board instead. */
 @media (orientation: landscape) and (max-height: 620px) {
   :root { --chrome: 64px; }
   body { height: 100dvh; flex-wrap: wrap; align-content: center; gap: 8px 18px; }
-  .grid { order: -1; }
+  .board { order: -1; }
   header { width: auto; gap: 18px; }
   footer { display: none; }
 }
@@ -191,13 +223,23 @@ footer { font-size: 12px; color: var(--muted); }
   <h1>Suguru</h1>
   <div class="seg" id="difficulty" role="group" aria-label="Difficulty"></div>
 </header>
-<div class="grid" id="grid"></div>
+<div class="board" id="board">
+  <div class="grid" id="grid"></div>
+  <div class="banner" id="banner">
+    <div>
+      <strong>Solved!</strong>
+      <span>Nice one.</span>
+      <button class="key" id="dismiss" type="button">Back to the board</button>
+    </div>
+  </div>
+</div>
 <p class="status" id="status"></p>
 <div class="pad" id="pad"></div>
 <div class="actions">
   <button class="key" id="undo" type="button">Undo</button>
-  <button class="key" id="clear" type="button">Clear</button>
   <button class="key" id="hintbtn" type="button">Hint</button>
+  <span class="sep" aria-hidden="true"></span>
+  <button class="key" id="restart" type="button">Restart</button>
   <button class="key" id="new" type="button">New</button>
 </div>
 <footer>Region = 1..n, no repeats touching, diagonals included.</footer>
@@ -637,9 +679,15 @@ function generate(difficulty) {
 /* --- player input ---------------------------------------------------- */
 
 /* Press digit d on a cell: value -> note -> value, notes accumulate. */
+/* Press digit d on a cell:
+ *   the cell's own value      -> demote it to a note
+ *   a digit already noted     -> promote it to the value
+ *   any digit on a noted cell -> another note (no need to press twice again)
+ *   otherwise                 -> fill the cell in. */
 function applyDigit(cell, d) {
   if (cell.value === d) return { value: 0, notes: cell.notes | bit(d) };
   if (cell.notes & bit(d)) return { value: d, notes: cell.notes & ~bit(d) };
+  if (!cell.value && cell.notes) return { value: 0, notes: cell.notes | bit(d) };
   return { value: d, notes: cell.notes };
 }
 
@@ -699,6 +747,7 @@ function freshState(puzzle) {
 
 function init() {
   var gridEl = document.getElementById('grid');
+  var boardEl = document.getElementById('board');
   var padEl = document.getElementById('pad');
   var statusEl = document.getElementById('status');
   var diffEl = document.getElementById('difficulty');
@@ -708,6 +757,7 @@ function init() {
   var state = null;
   var hintCells = [];
   var mistakeArmed = false;
+  var winDismissed = false;
   var cellEls = [];
 
   function save() {
@@ -757,7 +807,6 @@ function init() {
 
   function render() {
     var bad = conflicts(layout, state.values);
-    var selectedValue = state.selected !== null ? state.values[state.selected] : 0;
     for (var i = 0; i < CELLS; i++) {
       var el = cellEls[i];
       var value = state.values[i];
@@ -769,13 +818,15 @@ function init() {
       el.classList.toggle('filled', !!value);
       el.classList.toggle('given', !!puzzle.givens[i]);
       el.classList.toggle('sel', state.selected === i);
-      el.classList.toggle('peer', !!selectedValue && value === selectedValue && state.selected !== i);
       el.classList.toggle('bad', bad.indexOf(i) >= 0);
       el.classList.toggle('hint', hintCells.indexOf(i) >= 0);
     }
     document.getElementById('undo').disabled = state.undo.length === 0;
     var filled = state.values.every(function (v) { return v > 0; });
-    if (filled && bad.length === 0) {
+    var solved = filled && bad.length === 0;
+    if (!solved) winDismissed = false;
+    boardEl.classList.toggle('won', solved && !winDismissed);
+    if (solved) {
       statusEl.textContent = 'Solved. Nice one.';
       statusEl.className = 'status win';
     } else if (statusEl.className === 'status win') {
@@ -846,7 +897,7 @@ function init() {
     render();
   }
 
-  function clearBoard() {
+  function restartPuzzle() {
     var touched = [];
     for (var i = 0; i < CELLS; i++) {
       if (puzzle.givens[i]) continue;
@@ -854,7 +905,7 @@ function init() {
       touched.push({ idx: i, value: state.values[i], notes: state.notes[i] });
     }
     if (touched.length === 0) return;
-    if (!confirm('Clear your entries and start this puzzle again?')) return;
+    if (!confirm('Restart this puzzle? Your entries will be cleared.')) return;
     for (var t = 0; t < touched.length; t++) {
       state.values[touched[t].idx] = 0;
       state.notes[touched[t].idx] = 0;
@@ -981,7 +1032,11 @@ function init() {
   });
 
   document.getElementById('undo').addEventListener('click', undo);
-  document.getElementById('clear').addEventListener('click', clearBoard);
+  document.getElementById('dismiss').addEventListener('click', function () {
+    winDismissed = true;
+    render();
+  });
+  document.getElementById('restart').addEventListener('click', restartPuzzle);
   document.getElementById('hintbtn').addEventListener('click', hint);
   document.getElementById('new').addEventListener('click', function () {
     if (hasProgress() && !confirm('Start a new puzzle? This one will be lost.')) return;
