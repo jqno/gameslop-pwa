@@ -302,14 +302,6 @@ function cellRed(notes) {
   return false;
 }
 
-function redden(notes) {
-  var out = notes;
-  for (var d = 1; d <= MAXD; d++) {
-    if (notes & bit(d)) out |= redBit(d);
-  }
-  return out;
-}
-
 function bitCount(mask) {
   var n = 0;
   while (mask) { mask &= mask - 1; n++; }
@@ -706,15 +698,17 @@ function generate(difficulty) {
  *   absent -> the value -> a black note -> a red note -> the value -> absent.
  * The second visit to the value keeps the note bit, hidden under the value —
  * that is how the next press knows to clear rather than start over.
- * A cell's notes are all one colour: a digit joining notes takes their colour,
- * and reddening one note reddens the cell, so the two never mix. */
+ * A cell's notes are all one colour, so a digit joining notes takes their
+ * colour and only a lone note can be reddened. Pressed among other notes a
+ * digit promotes straight to the value instead, leaving their colour alone. */
 function applyDigit(cell, d) {
   var red = cellRed(cell.notes);
   if (cell.value === d && (cell.notes & bit(d))) return { value: 0, notes: cell.notes & ~bit(d) & ~redBit(d) };
   if (cell.value === d && red) return { value: 0, notes: cell.notes | bit(d) | redBit(d) };
   if (cell.value === d) return { value: 0, notes: cell.notes | bit(d) };
   if (cell.notes & redBit(d)) return { value: d, notes: cell.notes };
-  if (cell.notes & bit(d)) return { value: cell.value, notes: redden(cell.notes) };
+  if (cell.notes === bit(d)) return { value: cell.value, notes: cell.notes | redBit(d) };
+  if (cell.notes & bit(d)) return { value: d, notes: cell.notes };
   if (!cell.value && cell.notes && red) return { value: 0, notes: cell.notes | bit(d) | redBit(d) };
   if (!cell.value && cell.notes) return { value: 0, notes: cell.notes | bit(d) };
   return { value: d, notes: cell.notes };

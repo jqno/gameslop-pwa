@@ -174,18 +174,26 @@ test('a digit press cycles value -> black note -> red note -> value -> empty', (
   eq(cell.value, 0, 'a further digit does not fill the cell');
   eq(cell.notes, bit(2) | bit(3), 'a further digit notes itself at once, in black');
 
-  /* A cell's notes are all one colour. */
+  /* Reddening a note among others would leave the cell two-coloured, so a
+   * black note pressed among others promotes instead. */
   cell = S.applyDigit(cell, 2);
-  eq(cell.notes, bit(2) | bit(3) | red(2) | red(3), 'reddening one note reddens the cell');
-  cell = S.applyDigit(cell, 5);
-  eq(cell.notes, bit(2) | bit(3) | bit(5) | red(2) | red(3) | red(5),
-    'a note added to a red cell is red, skipping black');
+  eq(cell.value, 2, 'a black note among others promotes rather than reddening');
+  eq(cell.notes, bit(2) | bit(3), 'the notes are untouched underneath');
+  cell = S.applyDigit(cell, 2);
+  eq(cell.value, 0, 'pressing it again clears that digit');
+  eq(cell.notes, bit(3), 'and the rest come back in the colour they had');
 
+  /* Red is reached through a lone note, and the rest inherit it. */
+  cell = { value: 0, notes: bit(3) };
+  cell = S.applyDigit(cell, 3);
+  eq(cell.notes, bit(3) | red(3), 'a lone black note still turns red');
   cell = S.applyDigit(cell, 5);
-  eq(cell.value, 5, 'a red note promotes to the value');
-  cell = S.applyDigit(cell, 5);
-  eq(cell.value, 0, 'and the next press clears it');
-  eq(cell.notes, bit(2) | bit(3) | red(2) | red(3), 'leaving the other notes untouched');
+  eq(cell.notes, bit(3) | red(3) | bit(5) | red(5), 'a note added to a red cell is red');
+  cell = S.applyDigit(cell, 3);
+  eq(cell.value, 3, 'a red note among others promotes too');
+  cell = S.applyDigit(cell, 3);
+  eq(cell.value, 0, 'and clears on the press after that');
+  eq(cell.notes, bit(5) | red(5), 'leaving the rest red, as they were');
 
   cell = { value: 4, notes: 0 };
   cell = S.applyDigit(cell, 3);
