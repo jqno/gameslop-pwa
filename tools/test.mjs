@@ -147,7 +147,7 @@ test('hints stay sound when the player has filled cells out of order', () => {
   }
 });
 
-test('a digit press cycles value -> note -> value and notes accumulate', () => {
+test('a digit press cycles value -> note -> value -> empty', () => {
   let cell = { value: 0, notes: 0 };
   cell = S.applyDigit(cell, 3);
   eq(cell.value, 3, 'first press fills');
@@ -156,8 +156,10 @@ test('a digit press cycles value -> note -> value and notes accumulate', () => {
   eq(cell.value, 0, 'second press empties the value');
   eq(cell.notes, bit(3), 'second press notes the digit');
   cell = S.applyDigit(cell, 3);
-  eq(cell.value, 3, 'a noted digit becomes filled again');
-  eq(cell.notes, 0, 'the note is consumed');
+  eq(cell.value, 3, 'third press fills it back in from the note');
+  cell = S.applyDigit(cell, 3);
+  eq(cell.value, 0, 'fourth press clears the cell');
+  eq(cell.notes, 0, 'and takes the digit out of the notes');
 
   /* Once a cell is in note mode, further digits note themselves on one press. */
   cell = { value: 0, notes: 0 };
@@ -170,12 +172,21 @@ test('a digit press cycles value -> note -> value and notes accumulate', () => {
   cell = S.applyDigit(cell, 5);
   eq(cell.notes, bit(2) | bit(4) | bit(5), 'three notes coexist');
 
+  /* A noted digit fills the cell, then leaves altogether on the next press. */
   cell = S.applyDigit(cell, 4);
   eq(cell.value, 4, 'pressing a noted digit fills it');
-  eq(cell.notes, bit(2) | bit(5), 'that note is consumed');
+  eq(cell.notes, bit(2) | bit(4) | bit(5), 'the note is kept, hidden under the value');
+  cell = S.applyDigit(cell, 4);
+  eq(cell.value, 0, 'pressing it again clears the cell');
+  eq(cell.notes, bit(2) | bit(5), 'and drops that digit from the notes');
+
   cell = S.applyDigit(cell, 1);
-  eq(cell.value, 1, 'a filled cell takes a new digit as its value');
-  eq(cell.notes, bit(2) | bit(5), 'notes survive under a value');
+  eq(cell.notes, bit(1) | bit(2) | bit(5), 'other digits still note themselves');
+  cell = S.applyDigit(cell, 2);
+  eq(cell.value, 2, 'a noted digit still promotes');
+  cell = S.applyDigit(cell, 3);
+  eq(cell.value, 3, 'a filled cell takes a new digit as its value');
+  eq(cell.notes, bit(1) | bit(2) | bit(5), 'notes survive under a value');
 });
 
 test('conflicts flag both region and touching duplicates', () => {

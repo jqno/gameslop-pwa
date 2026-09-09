@@ -678,15 +678,20 @@ function generate(difficulty) {
 
 /* --- player input ---------------------------------------------------- */
 
-/* Press digit d on a cell: value -> note -> value, notes accumulate. */
 /* Press digit d on a cell:
- *   the cell's own value      -> demote it to a note
- *   a digit already noted     -> promote it to the value
+ *   its own value, and noted  -> clear the cell and drop d from the notes
+ *   its own value, not noted  -> demote it to a note (this opens note mode)
+ *   a digit already noted     -> promote it to the value, keeping the note
  *   any digit on a noted cell -> another note (no need to press twice again)
- *   otherwise                 -> fill the cell in. */
+ *   otherwise                 -> fill the cell in.
+ * Promoting keeps the note bit — it is hidden under the value, and it is what
+ * lets the next press tell "filled from a note" (clear it) apart from "typed
+ * straight in" (make it a note). So one digit walks a cell round a full cycle:
+ * value, note, value, empty. */
 function applyDigit(cell, d) {
+  if (cell.value === d && (cell.notes & bit(d))) return { value: 0, notes: cell.notes & ~bit(d) };
   if (cell.value === d) return { value: 0, notes: cell.notes | bit(d) };
-  if (cell.notes & bit(d)) return { value: d, notes: cell.notes & ~bit(d) };
+  if (cell.notes & bit(d)) return { value: d, notes: cell.notes };
   if (!cell.value && cell.notes) return { value: 0, notes: cell.notes | bit(d) };
   return { value: d, notes: cell.notes };
 }
