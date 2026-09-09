@@ -9,7 +9,7 @@ if (!match) throw new Error('could not find <script id="app"> in index.html');
 
 const EXPORTS = [
   'COLS', 'ROWS', 'CELLS', 'MAXD', 'DIFFICULTIES', 'SINGLES_ONLY', 'KING', 'ORTH',
-  'bit', 'bitCount', 'bitsOf', 'buildLayout', 'partition', 'candidateMask',
+  'bit', 'redBit', 'cellRed', 'NOTES_MAX', 'bitCount', 'bitsOf', 'buildLayout', 'partition', 'candidateMask',
   'conflicts', 'searchSolutions', 'nakedSubsets', 'pointing', 'nextPlacement', 'findFilledLayout',
   'solveLogically', 'carve', 'generate', 'applyDigit', 'serialize',
   'deserialize', 'freshState', 'shuffle', 'range'

@@ -147,46 +147,64 @@ test('hints stay sound when the player has filled cells out of order', () => {
   }
 });
 
-test('a digit press cycles value -> note -> value -> empty', () => {
+test('a digit press cycles value -> black note -> red note -> value -> empty', () => {
+  const red = S.redBit;
   let cell = { value: 0, notes: 0 };
-  cell = S.applyDigit(cell, 3);
-  eq(cell.value, 3, 'first press fills');
-  eq(cell.notes, 0, 'first press leaves no note');
-  cell = S.applyDigit(cell, 3);
-  eq(cell.value, 0, 'second press empties the value');
-  eq(cell.notes, bit(3), 'second press notes the digit');
-  cell = S.applyDigit(cell, 3);
-  eq(cell.value, 3, 'third press fills it back in from the note');
-  cell = S.applyDigit(cell, 3);
-  eq(cell.value, 0, 'fourth press clears the cell');
-  eq(cell.notes, 0, 'and takes the digit out of the notes');
+  cell = S.applyDigit(cell, 4);
+  eq(cell.value, 4, 'press 1 fills the cell');
+  eq(cell.notes, 0, 'press 1 leaves no note');
+  cell = S.applyDigit(cell, 4);
+  eq(cell.value, 0, 'press 2 empties the value');
+  eq(cell.notes, bit(4), 'press 2 leaves a black note');
+  cell = S.applyDigit(cell, 4);
+  eq(cell.value, 0, 'press 3 keeps the cell empty');
+  eq(cell.notes, bit(4) | red(4), 'press 3 turns the note red');
+  cell = S.applyDigit(cell, 4);
+  eq(cell.value, 4, 'press 4 fills the cell again');
+  cell = S.applyDigit(cell, 4);
+  eq(cell.value, 0, 'press 5 clears the cell');
+  eq(cell.notes, 0, 'press 5 takes the note with it');
 
   /* Once a cell is in note mode, further digits note themselves on one press. */
   cell = { value: 0, notes: 0 };
   cell = S.applyDigit(cell, 2);
   cell = S.applyDigit(cell, 2);
   eq(cell.notes, bit(2), 'two presses open the notes');
-  cell = S.applyDigit(cell, 4);
+  cell = S.applyDigit(cell, 3);
   eq(cell.value, 0, 'a further digit does not fill the cell');
-  eq(cell.notes, bit(2) | bit(4), 'a further digit notes itself at once');
-  cell = S.applyDigit(cell, 5);
-  eq(cell.notes, bit(2) | bit(4) | bit(5), 'three notes coexist');
+  eq(cell.notes, bit(2) | bit(3), 'a further digit notes itself at once, in black');
 
-  /* A noted digit fills the cell, then leaves altogether on the next press. */
-  cell = S.applyDigit(cell, 4);
-  eq(cell.value, 4, 'pressing a noted digit fills it');
-  eq(cell.notes, bit(2) | bit(4) | bit(5), 'the note is kept, hidden under the value');
-  cell = S.applyDigit(cell, 4);
-  eq(cell.value, 0, 'pressing it again clears the cell');
-  eq(cell.notes, bit(2) | bit(5), 'and drops that digit from the notes');
-
-  cell = S.applyDigit(cell, 1);
-  eq(cell.notes, bit(1) | bit(2) | bit(5), 'other digits still note themselves');
+  /* A cell's notes are all one colour. */
   cell = S.applyDigit(cell, 2);
-  eq(cell.value, 2, 'a noted digit still promotes');
+  eq(cell.notes, bit(2) | bit(3) | red(2) | red(3), 'reddening one note reddens the cell');
+  cell = S.applyDigit(cell, 5);
+  eq(cell.notes, bit(2) | bit(3) | bit(5) | red(2) | red(3) | red(5),
+    'a note added to a red cell is red, skipping black');
+
+  cell = S.applyDigit(cell, 5);
+  eq(cell.value, 5, 'a red note promotes to the value');
+  cell = S.applyDigit(cell, 5);
+  eq(cell.value, 0, 'and the next press clears it');
+  eq(cell.notes, bit(2) | bit(3) | red(2) | red(3), 'leaving the other notes untouched');
+
+  cell = { value: 4, notes: 0 };
   cell = S.applyDigit(cell, 3);
   eq(cell.value, 3, 'a filled cell takes a new digit as its value');
-  eq(cell.notes, bit(1) | bit(2) | bit(5), 'notes survive under a value');
+});
+
+test('a cell never ends up holding notes of two colours', () => {
+  let cell = { value: 0, notes: 0 };
+  for (let press = 0; press < 20000; press++) {
+    cell = S.applyDigit(cell, 1 + Math.floor(Math.random() * MAXD));
+    let black = 0;
+    let scarlet = 0;
+    for (let d = 1; d <= MAXD; d++) {
+      if (!(cell.notes & bit(d))) continue;
+      if (cell.notes & S.redBit(d)) scarlet++;
+      else black++;
+    }
+    assert(black === 0 || scarlet === 0, `mixed notes after ${press} presses: ${cell.notes}`);
+  }
 });
 
 test('conflicts flag both region and touching duplicates', () => {
@@ -221,7 +239,7 @@ test('state survives a save/load round trip', () => {
   eq(state.values.join(''), p.givens.join(''), 'fresh board starts from the givens');
   const free = state.values.indexOf(0);
   state.values[free] = 3;
-  state.notes[free] = bit(1) | bit(5);
+  state.notes[free] = bit(1) | bit(5) | S.redBit(5);
   state.selected = free;
   state.undo.push([{ idx: free, value: 0, notes: 0 }]);
 

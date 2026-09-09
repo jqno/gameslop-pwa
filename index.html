@@ -30,6 +30,7 @@
   --sel: #cfe0ff;
   --bad: #d64545;
   --badbg: #fbe3e3;
+  --note-red: #c0392b;
   --hint: #e08a00;
   --hintbg: #ffeecc;
   --given: #1b2130;
@@ -49,6 +50,7 @@
     --sel: #2b456f;
     --bad: #ff7b7b;
     --badbg: #45222a;
+    --note-red: #ff8a80;
     --hint: #ffb454;
     --hintbg: #4a3413;
     --given: #e7ebf3;
@@ -132,6 +134,7 @@ h1 { font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercas
 }
 .cell .notes i { font-style: normal; text-align: center; visibility: hidden; }
 .cell .notes i.on { visibility: visible; }
+.cell .notes i.red { color: var(--note-red); font-weight: 600; }
 .cell.filled .notes { display: none; }
 .cell.sel { background: var(--sel); }
 .cell.bad { background: var(--badbg); }
@@ -255,6 +258,9 @@ var COLS = 7;
 var ROWS = 9;
 var CELLS = COLS * ROWS;
 var MAXD = 5;
+/* A cell's notes are one number: bits 0..4 say a digit is noted, bits 5..9 say
+ * that note is red. Saved states from before red notes existed stay valid. */
+var NOTES_MAX = (1 << (MAXD * 2)) - 1;
 var STORAGE_KEY = 'suguru.v1';
 var UNDO_LIMIT = 200;
 
@@ -285,6 +291,24 @@ var KING = neighbourTable([[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1],
 var ORTH = neighbourTable([[-1, 0], [1, 0], [0, -1], [0, 1]]);
 
 function bit(d) { return 1 << (d - 1); }
+
+function redBit(d) { return bit(d) << MAXD; }
+
+/* A cell's notes are all one colour, so any red note makes the cell red. */
+function cellRed(notes) {
+  for (var d = 1; d <= MAXD; d++) {
+    if (notes & redBit(d)) return true;
+  }
+  return false;
+}
+
+function redden(notes) {
+  var out = notes;
+  for (var d = 1; d <= MAXD; d++) {
+    if (notes & bit(d)) out |= redBit(d);
+  }
+  return out;
+}
 
 function bitCount(mask) {
   var n = 0;
@@ -678,20 +702,20 @@ function generate(difficulty) {
 
 /* --- player input ---------------------------------------------------- */
 
-/* Press digit d on a cell:
- *   its own value, and noted  -> clear the cell and drop d from the notes
- *   its own value, not noted  -> demote it to a note (this opens note mode)
- *   a digit already noted     -> promote it to the value, keeping the note
- *   any digit on a noted cell -> another note (no need to press twice again)
- *   otherwise                 -> fill the cell in.
- * Promoting keeps the note bit — it is hidden under the value, and it is what
- * lets the next press tell "filled from a note" (clear it) apart from "typed
- * straight in" (make it a note). So one digit walks a cell round a full cycle:
- * value, note, value, empty. */
+/* Press digit d on a cell. Each digit walks its own five-step cycle:
+ *   absent -> the value -> a black note -> a red note -> the value -> absent.
+ * The second visit to the value keeps the note bit, hidden under the value —
+ * that is how the next press knows to clear rather than start over.
+ * A cell's notes are all one colour: a digit joining notes takes their colour,
+ * and reddening one note reddens the cell, so the two never mix. */
 function applyDigit(cell, d) {
-  if (cell.value === d && (cell.notes & bit(d))) return { value: 0, notes: cell.notes & ~bit(d) };
+  var red = cellRed(cell.notes);
+  if (cell.value === d && (cell.notes & bit(d))) return { value: 0, notes: cell.notes & ~bit(d) & ~redBit(d) };
+  if (cell.value === d && red) return { value: 0, notes: cell.notes | bit(d) | redBit(d) };
   if (cell.value === d) return { value: 0, notes: cell.notes | bit(d) };
-  if (cell.notes & bit(d)) return { value: d, notes: cell.notes };
+  if (cell.notes & redBit(d)) return { value: d, notes: cell.notes };
+  if (cell.notes & bit(d)) return { value: cell.value, notes: redden(cell.notes) };
+  if (!cell.value && cell.notes && red) return { value: 0, notes: cell.notes | bit(d) | redBit(d) };
   if (!cell.value && cell.notes) return { value: 0, notes: cell.notes | bit(d) };
   return { value: d, notes: cell.notes };
 }
@@ -730,7 +754,7 @@ function deserialize(text) {
   if (!isDigitArray(p.solution, MAXD)) return null;
   if (!DIFFICULTIES[p.difficulty]) return null;
   if (!isDigitArray(s.values, MAXD)) return null;
-  if (!isDigitArray(s.notes, 31)) return null;
+  if (!isDigitArray(s.notes, NOTES_MAX)) return null;
   if (!Array.isArray(s.undo)) return null;
   for (var i = 0; i < CELLS; i++) {
     if (p.givens[i] && s.values[i] !== p.givens[i]) return null;
@@ -818,7 +842,13 @@ function init() {
       el.querySelector('.val').textContent = value ? String(value) : '';
       var noteEls = el.querySelectorAll('.notes i');
       for (var d = 1; d <= MAXD; d++) {
-        noteEls[d - 1].className = (state.notes[i] & bit(d)) ? 'on' : '';
+        if (!(state.notes[i] & bit(d))) {
+          noteEls[d - 1].className = '';
+        } else if (state.notes[i] & redBit(d)) {
+          noteEls[d - 1].className = 'on red';
+        } else {
+          noteEls[d - 1].className = 'on';
+        }
       }
       el.classList.toggle('filled', !!value);
       el.classList.toggle('given', !!puzzle.givens[i]);
