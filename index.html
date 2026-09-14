@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Suguru</title>
-<meta name="description" content="A 7x9 Suguru puzzle that generates itself in your browser.">
+<meta name="description" content="A Suguru puzzle that generates itself in your browser.">
 <meta name="theme-color" content="#0f1420">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
@@ -16,11 +16,15 @@
 :root {
   color-scheme: light dark;
   /* One board size drives the grid, the keypad and the header. Cells are
-   * square, so the board is 7 cells wide and 9 tall; --chrome is the vertical
-   * space the rest of the page needs beside it. */
+   * square, so the board is --cols by --rows cells, which the script sets per
+   * puzzle. Cells stop growing at 60px so small grids stay a sensible size.
+   * --chrome is the vertical space the rest of the page needs beside it. */
+  --cols: 7;
+  --rows: 9;
   --chrome: 268px;
-  --board: min(94vw, 392px, max(200px, calc((100dvh - var(--chrome)) * 7 / 9)));
-  --cell: calc(var(--board) / 7);
+  --board: min(94vw, 392px, calc(var(--cols) * 60px),
+    max(200px, calc((100dvh - var(--chrome)) * var(--cols) / var(--rows))));
+  --cell: calc(var(--board) / var(--cols));
   --bg: #f4f6f9;
   --panel: #ffffff;
   --ink: #1b2130;
@@ -89,19 +93,13 @@ header {
   gap: 10px;
 }
 h1 { font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercase; }
-.seg { display: flex; border: 1px solid var(--btnline); border-radius: 9px; overflow: hidden; }
-.seg button {
-  border: 0; background: var(--btn); color: var(--muted);
-  font: inherit; font-size: 13px; padding: 7px 11px; cursor: pointer;
-}
-.seg button + button { border-left: 1px solid var(--btnline); }
-.seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.meta { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .grid {
   position: absolute;
   inset: 0;
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  grid-template-rows: repeat(9, 1fr);
+  grid-template-columns: repeat(var(--cols), 1fr);
+  grid-template-rows: repeat(var(--rows), 1fr);
   background: var(--panel);
   border-right: 3px solid var(--edge);
   border-bottom: 3px solid var(--edge);
@@ -154,7 +152,49 @@ h1 { font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercas
 .pad { grid-template-columns: repeat(6, 1fr); }
 /* Undo and Hint help you play; Restart and New throw the game away. The rule
  * between them says which is which. */
-.actions { grid-template-columns: 1fr 1fr auto 1fr 1fr; }
+.actions { position: relative; grid-template-columns: 1fr 1fr auto 1fr 1fr; }
+/* The New menu opens upward from its button: below it is off-screen on a phone. */
+.menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  z-index: 5;
+  width: min(100%, 300px);
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--btnline);
+  border-radius: 14px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .28);
+}
+/* Without this, display: grid above would beat the hidden attribute. */
+.menu[hidden] { display: none; }
+.menu h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.menu h2 small { font-weight: 400; letter-spacing: 0; text-transform: none; }
+.chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+#menu-diff { grid-template-columns: repeat(3, 1fr); }
+.chip {
+  font: inherit;
+  font-size: 14px;
+  min-height: 38px;
+  border: 1px solid var(--btnline);
+  border-radius: 8px;
+  background: var(--btn);
+  color: var(--ink);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.menu .go { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+button.key.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .sep { width: 1px; margin: 6px 3px; background: var(--btnline); border-radius: 1px; }
 button.key {
   font: inherit;
@@ -178,7 +218,7 @@ footer { font-size: 12px; color: var(--muted); }
   body { gap: 8px; }
   footer { display: none; }
 }
-.board { position: relative; width: var(--board); aspect-ratio: 7 / 9; }
+.board { position: relative; width: var(--board); aspect-ratio: var(--cols) / var(--rows); }
 .banner {
   position: absolute;
   inset: 0;
@@ -211,20 +251,34 @@ footer { font-size: 12px; color: var(--muted); }
   to { opacity: 1; transform: none; }
 }
 /* Landscape phones are too short for the board with the keypad below it, so
- * wrap the column and let the controls sit beside the board instead. */
+ * the board takes the left column and everything else stacks beside it,
+ * centred between two spacer rows. An explicit grid rather than a wrapping
+ * flex column, so where the header lands does not depend on its height. */
 @media (orientation: landscape) and (max-height: 620px) {
   :root { --chrome: 64px; }
-  body { height: 100dvh; flex-wrap: wrap; align-content: center; gap: 8px 18px; }
-  .board { order: -1; }
-  header { width: auto; gap: 18px; }
+  body {
+    display: grid;
+    height: 100dvh;
+    grid-template-columns: auto auto;
+    grid-template-rows: 1fr auto auto auto auto 1fr;
+    align-items: center;
+    gap: 8px 18px;
+  }
+  .board { grid-column: 1; grid-row: 1 / -1; }
+  header { grid-column: 2; grid-row: 2; width: auto; gap: 18px; }
+  .status { grid-column: 2; grid-row: 3; }
+  .pad { grid-column: 2; grid-row: 4; }
+  .actions { grid-column: 2; grid-row: 5; }
   footer { display: none; }
+  /* There is no room above the New button here, so centre the menu. */
+  .menu { position: fixed; top: 50%; left: 50%; right: auto; bottom: auto; transform: translate(-50%, -50%); }
 }
 </style>
 </head>
 <body>
 <header>
   <h1>Suguru</h1>
-  <div class="seg" id="difficulty" role="group" aria-label="Difficulty"></div>
+  <span class="meta" id="meta"></span>
 </header>
 <div class="board" id="board">
   <div class="grid" id="grid"></div>
@@ -243,7 +297,17 @@ footer { font-size: 12px; color: var(--muted); }
   <button class="key" id="hintbtn" type="button">Hint</button>
   <span class="sep" aria-hidden="true"></span>
   <button class="key" id="restart" type="button">Restart</button>
-  <button class="key" id="new" type="button">New</button>
+  <button class="key" id="new" type="button" aria-haspopup="true" aria-expanded="false">New</button>
+  <div class="menu" id="menu" hidden>
+    <h2>Difficulty</h2>
+    <div class="chips" id="menu-diff"></div>
+    <h2>Size <small>rows × columns</small></h2>
+    <div class="chips" id="menu-size"></div>
+    <div class="go">
+      <button class="key" id="menu-cancel" type="button">Cancel</button>
+      <button class="key primary" id="menu-start" type="button">Start</button>
+    </div>
+  </div>
 </div>
 <footer>Region = 1..n, no repeats touching, diagonals included.</footer>
 <script id="app">
@@ -254,9 +318,16 @@ footer { font-size: 12px; color: var(--muted); }
  * tools/test.mjs can evaluate this script in Node.
  * ------------------------------------------------------------------ */
 
-var COLS = 7;
-var ROWS = 9;
-var CELLS = COLS * ROWS;
+/* Sizes on offer, rows x cols. Anything much bigger took several seconds to
+ * generate here, and a phone is slower still. */
+var SIZES = [
+  { rows: 5, cols: 5 }, { rows: 6, cols: 6 }, { rows: 7, cols: 7 }, { rows: 9, cols: 7 },
+  { rows: 8, cols: 8 }, { rows: 10, cols: 8 }, { rows: 9, cols: 9 }
+];
+var DEFAULT_SIZE = { rows: 9, cols: 7 };
+/* The grid size belongs to the puzzle. Everything reads these globals, so
+ * setGeometry() runs before anything touches a puzzle's cells. */
+var COLS, ROWS, CELLS, KING, ORTH;
 var MAXD = 5;
 /* A cell's notes are one number: bits 0..4 say a digit is noted, bits 5..9 say
  * that note is red. Saved states from before red notes existed stay valid. */
@@ -265,11 +336,11 @@ var STORAGE_KEY = 'suguru.v1';
 var UNDO_LIMIT = 200;
 
 var DIFFICULTIES = {
-  easy: { label: 'Easy', pairs: false, pointing: false, minGivens: 26 },
-  medium: { label: 'Medium', pairs: false, pointing: false, minGivens: 0 },
-  hard: { label: 'Hard', pairs: true, pointing: true, minGivens: 0 }
+  easy: { label: 'Easy', pairs: false, pointing: false, minGivenShare: 0.41 },
+  medium: { label: 'Medium', pairs: false, pointing: false, minGivenShare: 0 },
+  hard: { label: 'Hard', pairs: true, pointing: true, minGivenShare: 0 }
 };
-var SINGLES_ONLY = { pairs: false, pointing: false, minGivens: 0 };
+var SINGLES_ONLY = { pairs: false, pointing: false, minGivenShare: 0 };
 
 function neighbourTable(deltas) {
   var table = [];
@@ -287,8 +358,19 @@ function neighbourTable(deltas) {
   return table;
 }
 
-var KING = neighbourTable([[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]]);
-var ORTH = neighbourTable([[-1, 0], [1, 0], [0, -1], [0, 1]]);
+function setGeometry(cols, rows) {
+  COLS = cols;
+  ROWS = rows;
+  CELLS = cols * rows;
+  KING = neighbourTable([[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]]);
+  ORTH = neighbourTable([[-1, 0], [1, 0], [0, -1], [0, 1]]);
+}
+
+function isOfferedSize(rows, cols) {
+  return SIZES.some(function (size) { return size.rows === rows && size.cols === cols; });
+}
+
+setGeometry(DEFAULT_SIZE.cols, DEFAULT_SIZE.rows);
 
 function bit(d) { return 1 << (d - 1); }
 
@@ -644,9 +726,10 @@ function solveLogically(layout, values, opts) {
 function carve(layout, solution, opts) {
   var givens = solution.slice();
   var count = CELLS;
+  var floor = Math.round(opts.minGivenShare * CELLS);
   var order = shuffle(range(CELLS));
   for (var o = 0; o < order.length; o++) {
-    if (count <= opts.minGivens) break;
+    if (count <= floor) break;
     var i = order[o];
     givens[i] = 0;
     if (solveLogically(layout, givens, opts).solved) {
@@ -671,7 +754,10 @@ function findFilledLayout() {
   throw new Error('could not generate a puzzle');
 }
 
-function generate(difficulty) {
+function generate(difficulty, size) {
+  var dims = size;
+  if (!dims) dims = DEFAULT_SIZE;
+  setGeometry(dims.cols, dims.rows);
   var key = DIFFICULTIES[difficulty] ? difficulty : 'medium';
   var opts = DIFFICULTIES[key];
   var needsAdvanced = opts.pairs || opts.pointing;
@@ -679,6 +765,8 @@ function generate(difficulty) {
   for (var attempt = 0; attempt < 8; attempt++) {
     var filled = findFilledLayout();
     var puzzle = {
+      rows: ROWS,
+      cols: COLS,
       regions: filled.layout.regions.slice(),
       givens: carve(filled.layout, filled.solution, opts),
       solution: filled.solution,
@@ -743,6 +831,16 @@ function deserialize(text) {
   if (!data || data.version !== 1 || !data.puzzle || !data.state) return null;
   var p = data.puzzle;
   var s = data.state;
+  var rows = p.rows;
+  var cols = p.cols;
+  /* Saves from before the size was selectable are all 9x7. */
+  if (rows === undefined && cols === undefined) {
+    rows = DEFAULT_SIZE.rows;
+    cols = DEFAULT_SIZE.cols;
+  }
+  if (!isOfferedSize(rows, cols)) return null;
+  /* Everything below is measured against this puzzle's own size. */
+  setGeometry(cols, rows);
   if (!isDigitArray(p.regions, CELLS - 1)) return null;
   if (!isDigitArray(p.givens, MAXD)) return null;
   if (!isDigitArray(p.solution, MAXD)) return null;
@@ -755,13 +853,13 @@ function deserialize(text) {
   }
   var selected = Number.isInteger(s.selected) && s.selected >= 0 && s.selected < CELLS ? s.selected : null;
   return {
-    puzzle: p,
+    puzzle: { rows: rows, cols: cols, regions: p.regions, givens: p.givens, solution: p.solution, difficulty: p.difficulty },
     state: { values: s.values, notes: s.notes, selected: selected, undo: s.undo.slice(-UNDO_LIMIT) }
   };
 }
 
 function freshState(puzzle) {
-  return { values: puzzle.givens.slice(), notes: new Array(CELLS).fill(0), selected: null, undo: [] };
+  return { values: puzzle.givens.slice(), notes: new Array(puzzle.givens.length).fill(0), selected: null, undo: [] };
 }
 
 /* ------------------------------------------------------------------ *
@@ -773,7 +871,9 @@ function init() {
   var boardEl = document.getElementById('board');
   var padEl = document.getElementById('pad');
   var statusEl = document.getElementById('status');
-  var diffEl = document.getElementById('difficulty');
+  var metaEl = document.getElementById('meta');
+  var menuEl = document.getElementById('menu');
+  var newBtn = document.getElementById('new');
 
   var puzzle = null;
   var layout = null;
@@ -800,6 +900,8 @@ function init() {
   }
 
   function buildGrid() {
+    document.documentElement.style.setProperty('--cols', String(COLS));
+    document.documentElement.style.setProperty('--rows', String(ROWS));
     gridEl.textContent = '';
     cellEls = [];
     for (var i = 0; i < CELLS; i++) {
@@ -988,17 +1090,17 @@ function init() {
     state = freshState(puzzle);
     clearHint();
     buildGrid();
-    renderDifficulty();
+    renderMeta();
     save();
     render();
   }
 
-  function newPuzzle(difficulty) {
+  function newPuzzle(difficulty, size) {
     setStatus('Generating...');
     statusEl.className = 'status';
     /* Let the status paint before the synchronous generator blocks. */
     setTimeout(function () {
-      startPuzzle(generate(difficulty));
+      startPuzzle(generate(difficulty, size));
       setStatus('');
     }, 20);
   }
@@ -1011,26 +1113,67 @@ function init() {
     return false;
   }
 
-  function renderDifficulty() {
-    var buttons = diffEl.querySelectorAll('button');
-    for (var b = 0; b < buttons.length; b++) {
-      buttons[b].setAttribute('aria-pressed', String(buttons[b].dataset.diff === puzzle.difficulty));
+  function renderMeta() {
+    metaEl.textContent = DIFFICULTIES[puzzle.difficulty].label + ' · ' + puzzle.rows + '×' + puzzle.cols;
+  }
+
+  /* --- the New menu: pick a difficulty and a size, then start --- */
+
+  var choice = { difficulty: 'medium', rows: DEFAULT_SIZE.rows, cols: DEFAULT_SIZE.cols };
+
+  /* Only flips aria-pressed: rebuilding the chips would detach the one just
+   * tapped, and the outside-tap check would then close the menu under you. */
+  function renderMenu() {
+    var diffs = menuEl.querySelectorAll('#menu-diff .chip');
+    for (var i = 0; i < diffs.length; i++) {
+      diffs[i].setAttribute('aria-pressed', String(diffs[i].dataset.diff === choice.difficulty));
     }
+    var sizes = menuEl.querySelectorAll('#menu-size .chip');
+    for (var j = 0; j < sizes.length; j++) {
+      var picked = Number(sizes[j].dataset.rows) === choice.rows && Number(sizes[j].dataset.cols) === choice.cols;
+      sizes[j].setAttribute('aria-pressed', String(picked));
+    }
+  }
+
+  function openMenu() {
+    choice = { difficulty: puzzle.difficulty, rows: puzzle.rows, cols: puzzle.cols };
+    renderMenu();
+    menuEl.hidden = false;
+    newBtn.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeMenu() {
+    menuEl.hidden = true;
+    newBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  function chip(label, onPick) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip';
+    b.textContent = label;
+    b.addEventListener('click', function () {
+      onPick();
+      renderMenu();
+    });
+    return b;
   }
 
   /* --- wiring --- */
 
   Object.keys(DIFFICULTIES).forEach(function (key) {
-    var b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = DIFFICULTIES[key].label;
+    var b = chip(DIFFICULTIES[key].label, function () { choice.difficulty = key; });
     b.dataset.diff = key;
-    b.addEventListener('click', function () {
-      if (key === puzzle.difficulty && !hasProgress()) return;
-      if (hasProgress() && !confirm('Start a new ' + DIFFICULTIES[key].label.toLowerCase() + ' puzzle? This one will be lost.')) return;
-      newPuzzle(key);
+    document.getElementById('menu-diff').appendChild(b);
+  });
+  SIZES.forEach(function (size) {
+    var b = chip(size.rows + '×' + size.cols, function () {
+      choice.rows = size.rows;
+      choice.cols = size.cols;
     });
-    diffEl.appendChild(b);
+    b.dataset.rows = String(size.rows);
+    b.dataset.cols = String(size.cols);
+    document.getElementById('menu-size').appendChild(b);
   });
 
   for (var d = 1; d <= MAXD; d++) {
@@ -1067,13 +1210,34 @@ function init() {
   });
   document.getElementById('restart').addEventListener('click', restartPuzzle);
   document.getElementById('hintbtn').addEventListener('click', hint);
-  document.getElementById('new').addEventListener('click', function () {
+  newBtn.addEventListener('click', function () {
+    if (menuEl.hidden) {
+      openMenu();
+    } else {
+      closeMenu();
+    }
+  });
+  document.getElementById('menu-cancel').addEventListener('click', closeMenu);
+  document.getElementById('menu-start').addEventListener('click', function () {
+    closeMenu();
     if (hasProgress() && !confirm('Start a new puzzle? This one will be lost.')) return;
-    newPuzzle(puzzle.difficulty);
+    newPuzzle(choice.difficulty, { rows: choice.rows, cols: choice.cols });
+  });
+  /* A tap anywhere outside the menu puts it away, as a popup should. */
+  document.addEventListener('click', function (ev) {
+    if (menuEl.hidden) return;
+    if (menuEl.contains(ev.target)) return;
+    if (newBtn.contains(ev.target)) return;
+    closeMenu();
   });
 
   document.addEventListener('keydown', function (ev) {
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    /* While the menu is open, keys belong to it and not to the board. */
+    if (!menuEl.hidden) {
+      if (ev.key === 'Escape') closeMenu();
+      return;
+    }
     if (ev.key >= '1' && ev.key <= '5') {
       pressDigit(Number(ev.key));
       ev.preventDefault();
@@ -1113,7 +1277,7 @@ function init() {
     layout = buildLayout(puzzle.regions);
     state = restored.state;
     buildGrid();
-    renderDifficulty();
+    renderMeta();
     render();
   } else {
     startPuzzle(generate('medium'));

@@ -1,6 +1,8 @@
 import S from './suguru.mjs';
 
-const { CELLS, MAXD, DIFFICULTIES, SINGLES_ONLY, KING, ORTH, bit } = S;
+/* CELLS is the default size, which every test but the size tests runs at;
+ * those read S.CELLS, S.KING and S.ORTH live. */
+const { CELLS, MAXD, DIFFICULTIES, SINGLES_ONLY, bit } = S;
 const SAMPLES = Number(process.env.SAMPLES || 20);
 
 let failures = 0;
@@ -30,7 +32,7 @@ function connected(cells) {
   const seen = new Set([cells[0]]);
   const queue = [cells[0]];
   while (queue.length) {
-    for (const j of ORTH[queue.pop()]) {
+    for (const j of S.ORTH[queue.pop()]) {
       if (set.has(j) && !seen.has(j)) {
         seen.add(j);
         queue.push(j);
@@ -68,7 +70,7 @@ test('each solution holds 1..n per region and no touching duplicates', () => {
       eq(digits.join(''), wanted.join(''), `region ${rid} digits`);
     });
     for (let i = 0; i < CELLS; i++) {
-      for (const j of KING[i]) {
+      for (const j of S.KING[i]) {
         assert(p.solution[i] !== p.solution[j], `touching duplicate at ${i}/${j}`);
       }
     }
@@ -110,7 +112,7 @@ test('hard puzzles cannot be finished with singles alone', () => {
 
 test('easy puzzles keep their clue floor', () => {
   for (const p of puzzles.easy) {
-    assert(p.givens.filter((v) => v).length >= DIFFICULTIES.easy.minGivens, 'too few givens');
+    assert(p.givens.filter((v) => v).length >= Math.round(DIFFICULTIES.easy.minGivenShare * CELLS), 'too few givens');
   }
 });
 
@@ -230,7 +232,7 @@ test('conflicts flag both region and touching duplicates', () => {
   let i = -1;
   let j = -1;
   for (let c = 0; c < CELLS && j < 0; c++) {
-    const other = KING[c].find((x) => layout.regions[x] !== layout.regions[c]);
+    const other = S.KING[c].find((x) => layout.regions[x] !== layout.regions[c]);
     if (other !== undefined) {
       i = c;
       j = other;
@@ -280,6 +282,59 @@ test('corrupt or foreign saved state is rejected rather than loaded', () => {
   const outOfRange = JSON.parse(good);
   outOfRange.state.values[p.givens.indexOf(0)] = 9;
   eq(S.deserialize(JSON.stringify(outOfRange)), null, 'digit out of range');
+});
+
+test('every offered size generates valid puzzles with one solution and sound hints', () => {
+  for (const size of S.SIZES) {
+    for (const key of Object.keys(DIFFICULTIES)) {
+      for (let n = 0; n < 2; n++) {
+        const p = S.generate(key, size);
+        const where = `${key} ${size.rows}x${size.cols}`;
+        eq(p.rows, size.rows, `${where} rows`);
+        eq(p.cols, size.cols, `${where} cols`);
+        eq(p.regions.length, size.rows * size.cols, `${where} cell count`);
+        const layout = S.buildLayout(p.regions);
+        for (const cells of layout.regionCells) {
+          assert(cells.length >= 1 && cells.length <= MAXD, `${where} region size ${cells.length}`);
+          assert(connected(cells), `${where} region ${cells} is not connected`);
+        }
+        eq(S.conflicts(layout, p.solution).length, 0, `${where} solution breaks a rule`);
+        eq(S.searchSolutions(layout, p.givens, 2).length, 1, `${where} solution count`);
+        const board = p.givens.slice();
+        while (board.some((v) => !v)) {
+          const step = S.nextPlacement(layout, board, DIFFICULTIES[key]);
+          assert(step, `${where} ran out of hints`);
+          eq(step.digit, p.solution[step.idx], `${where} hint at cell ${step.idx}`);
+          board[step.idx] = step.digit;
+        }
+      }
+    }
+  }
+  S.setGeometry(S.DEFAULT_SIZE.cols, S.DEFAULT_SIZE.rows);
+});
+
+test('a save keeps its grid size, and saves from before sizes load as 9x7', () => {
+  const small = S.generate('medium', { rows: 6, cols: 6 });
+  const text = S.serialize(small, S.freshState(small));
+  S.setGeometry(S.DEFAULT_SIZE.cols, S.DEFAULT_SIZE.rows);
+  const back = S.deserialize(text);
+  assert(back, 'a 6x6 save did not load');
+  eq(back.puzzle.rows, 6, 'rows');
+  eq(back.puzzle.cols, 6, 'cols');
+  eq(S.CELLS, 36, 'loading a save switches to its size');
+
+  const old = JSON.parse(S.serialize(puzzles.easy[0], S.freshState(puzzles.easy[0])));
+  delete old.puzzle.rows;
+  delete old.puzzle.cols;
+  const legacy = S.deserialize(JSON.stringify(old));
+  assert(legacy, 'a save without a size did not load');
+  eq(legacy.puzzle.rows, 9, 'legacy rows');
+  eq(legacy.puzzle.cols, 7, 'legacy cols');
+
+  const odd = JSON.parse(text);
+  odd.puzzle.rows = 12;
+  odd.puzzle.cols = 3;
+  eq(S.deserialize(JSON.stringify(odd)), null, 'a size that is not on offer');
 });
 
 console.log(`\n${count - failures}/${count} passed`);

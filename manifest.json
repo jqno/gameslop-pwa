@@ -1,7 +1,7 @@
 {
   "name": "Suguru",
   "short_name": "Suguru",
-  "description": "A 7x9 Suguru puzzle that generates itself in your browser.",
+  "description": "A Suguru puzzle that generates itself in your browser.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
