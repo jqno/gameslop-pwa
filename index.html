@@ -21,7 +21,7 @@
    * --chrome is the vertical space the rest of the page needs beside it. */
   --cols: 7;
   --rows: 9;
-  --chrome: 268px;
+  --chrome: 240px;
   --board: min(94vw, 392px, calc(var(--cols) * 60px),
     max(200px, calc((100dvh - var(--chrome)) * var(--cols) / var(--rows))));
   --cell: calc(var(--board) / var(--cols));
@@ -210,13 +210,10 @@ button.key:active { background: var(--sel); }
 button.key:disabled { opacity: .4; cursor: default; }
 .pad button.key { font-size: 22px; font-weight: 600; }
 .actions button.key { font-size: 14px; }
-footer { font-size: 12px; color: var(--muted); }
-/* Short screens: drop the footnote and tighten the gaps so the board keeps
- * as much height as possible. */
+/* Short screens: tighten the gaps so the board keeps as much height as possible. */
 @media (max-height: 680px) {
   :root { --chrome: 216px; }
   body { gap: 8px; }
-  footer { display: none; }
 }
 .board { position: relative; width: var(--board); aspect-ratio: var(--cols) / var(--rows); }
 .banner {
@@ -269,7 +266,6 @@ footer { font-size: 12px; color: var(--muted); }
   .status { grid-column: 2; grid-row: 3; }
   .pad { grid-column: 2; grid-row: 4; }
   .actions { grid-column: 2; grid-row: 5; }
-  footer { display: none; }
   /* There is no room above the New button here, so centre the menu. */
   .menu { position: fixed; top: 50%; left: 50%; right: auto; bottom: auto; transform: translate(-50%, -50%); }
 }
@@ -309,7 +305,6 @@ footer { font-size: 12px; color: var(--muted); }
     </div>
   </div>
 </div>
-<footer>Region = 1..n, no repeats touching, diagonals included.</footer>
 <script id="app">
 'use strict';
 
@@ -679,7 +674,7 @@ function nextPlacement(layout, values, opts) {
       if (values[i]) continue;
       if (cand[i] === 0) return null;
       if (bitCount(cand[i]) === 1) {
-        return { idx: i, digit: lowestDigit(cand[i]), technique: 'naked single' };
+        return { idx: i, digit: lowestDigit(cand[i]), technique: 'only one digit fits' };
       }
     }
     for (var rid = 0; rid < layout.count; rid++) {
@@ -693,7 +688,7 @@ function nextPlacement(layout, values, opts) {
         var spots = cells.filter(function (x) { return !values[x] && (cand[x] & bit(d)); });
         if (spots.length === 0) return null;
         if (spots.length === 1) {
-          return { idx: spots[0], digit: d, technique: 'hidden single' };
+          return { idx: spots[0], digit: d, technique: 'only spot in its region for a digit' };
         }
       }
     }
@@ -701,6 +696,46 @@ function nextPlacement(layout, values, opts) {
     if (opts.pairs && nakedSubsets(layout, values, cand)) changed = true;
     if (opts.pointing && pointing(layout, values, cand)) changed = true;
     if (!changed) return null;
+  }
+}
+
+/* Every cell that can be worked out from the board as it stands, cheapest
+ * technique first. nextPlacement returns the first of these; the hint button
+ * walks the rest, for when a player cannot see the one it offered. Like
+ * nextPlacement this offers nothing at all once the board contradicts itself. */
+function allPlacements(layout, values, opts) {
+  var cand = allCandidates(layout, values);
+  for (;;) {
+    var found = [];
+    var seen = {};
+    for (var i = 0; i < CELLS; i++) {
+      if (values[i]) continue;
+      if (cand[i] === 0) return [];
+      if (bitCount(cand[i]) !== 1) continue;
+      seen[i] = true;
+      found.push({ idx: i, digit: lowestDigit(cand[i]), technique: 'only one digit fits' });
+    }
+    for (var rid = 0; rid < layout.count; rid++) {
+      var cells = layout.regionCells[rid];
+      for (var d = 1; d <= layout.sizeOf[rid]; d++) {
+        var placed = false;
+        for (var c = 0; c < cells.length; c++) {
+          if (values[cells[c]] === d) placed = true;
+        }
+        if (placed) continue;
+        var spots = cells.filter(function (x) { return !values[x] && (cand[x] & bit(d)); });
+        if (spots.length === 0) return [];
+        if (spots.length !== 1) continue;
+        if (seen[spots[0]]) continue;
+        seen[spots[0]] = true;
+        found.push({ idx: spots[0], digit: d, technique: 'only spot in its region for a digit' });
+      }
+    }
+    if (found.length) return found;
+    var changed = false;
+    if (opts.pairs && nakedSubsets(layout, values, cand)) changed = true;
+    if (opts.pointing && pointing(layout, values, cand)) changed = true;
+    if (!changed) return [];
   }
 }
 
@@ -879,6 +914,8 @@ function init() {
   var layout = null;
   var state = null;
   var hintCells = [];
+  var hintList = [];
+  var hintAt = 0;
   var mistakeArmed = false;
   var winDismissed = false;
   var cellEls = [];
@@ -978,6 +1015,8 @@ function init() {
 
   function clearHint() {
     hintCells = [];
+    hintList = [];
+    hintAt = 0;
     mistakeArmed = false;
   }
 
@@ -1066,8 +1105,17 @@ function init() {
       return;
     }
     mistakeArmed = false;
-    var step = nextPlacement(layout, state.values, DIFFICULTIES[puzzle.difficulty]);
-    if (step) {
+    /* Hint again on an unchanged board moves on to the next cell that can be
+     * worked out, for when this one's reasoning will not come. Any move clears
+     * the list, so the next hint starts from the board as it then stands. */
+    if (hintList.length) {
+      hintAt = (hintAt + 1) % hintList.length;
+    } else {
+      hintList = allPlacements(layout, state.values, DIFFICULTIES[puzzle.difficulty]);
+      hintAt = 0;
+    }
+    if (hintList.length) {
+      var step = hintList[hintAt];
       hintCells = [step.idx];
       setStatus('This cell can be worked out (' + step.technique + ').');
       render();

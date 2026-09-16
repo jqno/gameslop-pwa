@@ -1,5 +1,5 @@
 /* Cache-first over the whole app; bump CACHE to ship an update. */
-const CACHE = 'suguru-v7';
+const CACHE = 'suguru-v8';
 const FILES = ['.', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (event) => {

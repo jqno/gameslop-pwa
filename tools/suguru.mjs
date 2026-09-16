@@ -13,7 +13,7 @@ const LIVE = ['COLS', 'ROWS', 'CELLS', 'KING', 'ORTH'];
 const EXPORTS = [
   'MAXD', 'DIFFICULTIES', 'SINGLES_ONLY', 'bit', 'redBit', 'cellRed', 'NOTES_MAX', 'bitCount',
   'bitsOf', 'buildLayout', 'partition', 'candidateMask', 'conflicts', 'searchSolutions',
-  'nakedSubsets', 'pointing', 'nextPlacement', 'findFilledLayout', 'solveLogically', 'carve',
+  'nakedSubsets', 'pointing', 'nextPlacement', 'allPlacements', 'findFilledLayout', 'solveLogically', 'carve',
   'generate', 'applyDigit', 'serialize', 'deserialize', 'freshState', 'shuffle', 'range',
   'SIZES', 'DEFAULT_SIZE', 'setGeometry', 'isOfferedSize'
 ];

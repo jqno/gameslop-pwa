@@ -149,6 +149,46 @@ test('hints stay sound when the player has filled cells out of order', () => {
   }
 });
 
+test('every cell the hint button offers can be worked out, not just the first', () => {
+  for (const [key, p] of every) {
+    const layout = S.buildLayout(p.regions);
+    for (let trial = 0; trial < 5; trial++) {
+      const board = p.givens.slice();
+      for (let i = 0; i < CELLS; i++) {
+        if (!board[i] && Math.random() < 0.4) board[i] = p.solution[i];
+      }
+      if (!board.some((v) => !v)) continue;
+      const offers = S.allPlacements(layout, board, DIFFICULTIES[key]);
+      const seen = new Set();
+      for (const step of offers) {
+        eq(step.digit, p.solution[step.idx], `hint at cell ${step.idx}`);
+        assert(!board[step.idx], `hint pointed at filled cell ${step.idx}`);
+        assert(!seen.has(step.idx), `cell ${step.idx} offered twice`);
+        seen.add(step.idx);
+      }
+      const first = S.nextPlacement(layout, board, DIFFICULTIES[key]);
+      if (!first) continue;
+      assert(offers.length, 'a step exists but the hint list was empty');
+      eq(offers[0].idx, first.idx, 'the first hint is the one the solver gives');
+    }
+  }
+});
+
+test('a puzzle can be finished by always taking the last hint on offer', () => {
+  for (const [key, p] of every) {
+    const layout = S.buildLayout(p.regions);
+    const board = p.givens.slice();
+    while (board.some((v) => !v)) {
+      const offers = S.allPlacements(layout, board, DIFFICULTIES[key]);
+      assert(offers.length, `${key} ran out of hints with ${board.filter((v) => !v).length} cells left`);
+      const step = offers[offers.length - 1];
+      eq(step.digit, p.solution[step.idx], `hint at cell ${step.idx}`);
+      board[step.idx] = step.digit;
+    }
+    eq(board.join(''), p.solution.join(''), 'finished board');
+  }
+});
+
 test('a digit press cycles value -> black note -> red note -> value -> empty', () => {
   const red = S.redBit;
   let cell = { value: 0, notes: 0 };
