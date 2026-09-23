@@ -1,0 +1,1139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Crowd Run</title>
+<meta name="description" content="Steer a growing crowd through gates, past enemies and into the boss.">
+<meta name="theme-color" content="#0f1420">
+<link rel="manifest" href="../manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gameslop">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root {
+  color-scheme: light dark;
+  --width: min(100%, 520px);
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --ink: #1b2130;
+  --muted: #6b7382;
+  --btn: #ffffff;
+  --btnline: #ccd2dd;
+  --sel: #cfe0ff;
+  --accent: #2358c8;
+  /* The scene is drawn on a canvas, which reads these once per colour scheme. */
+  --sky: #cfe0f5;
+  --grass: #b9d3a6;
+  --road: #e9ecf1;
+  --stripe: #c3c9d4;
+  --crowd: #2358c8;
+  --enemy: #d64545;
+  --good: #2f7de0;
+  --bad: #d64545;
+  --recruit: #8b95a8;
+  --shield: #1aa39a;
+  --double: #8a4fd6;
+  --rage: #e08a00;
+  --hazard: #3d4556;
+  --sun: #ffc93c;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1420;
+    --panel: #161c2b;
+    --ink: #e7ebf3;
+    --muted: #8b95a8;
+    --btn: #1c2334;
+    --btnline: #313a50;
+    --sel: #2b456f;
+    --accent: #79a8ff;
+    --sky: #1a2438;
+    --grass: #1d2a22;
+    --road: #2b3346;
+    --stripe: #48526a;
+    --crowd: #79a8ff;
+    --enemy: #ff7b7b;
+    --good: #5c9cff;
+    --bad: #ff6b6b;
+    --recruit: #9aa3b5;
+    --shield: #3fd1c6;
+    --double: #b98cff;
+    --rage: #ffb454;
+    --hazard: #c7cedb;
+    --sun: #f2d27a;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+header {
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+h1 { flex: 1; font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercase; }
+.meta { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+a.key, button.key {
+  font: inherit;
+  background: var(--btn);
+  color: var(--ink);
+  border: 1px solid var(--btnline);
+  border-radius: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+a.key { display: flex; align-items: center; justify-content: center; padding: 0 14px; font-size: 22px; text-decoration: none; }
+button.key { padding: 10px 26px; font-size: 16px; font-weight: 600; }
+button.key.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.key:active { background: var(--sel); }
+/* The stage takes whatever height is left; the canvas fills it and is
+ * steered by dragging anywhere on it. */
+.stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: var(--width);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--sky);
+  touch-action: none;
+}
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 12, 22, .45);
+}
+.overlay[hidden] { display: none; }
+.overlay > div {
+  width: min(84%, 340px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 26px 20px;
+  text-align: center;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 18px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .35);
+  animation: pop .3s ease-out;
+}
+.overlay strong { font-size: 28px; line-height: 1.1; color: var(--accent); }
+.overlay p { margin: 0; color: var(--muted); }
+@keyframes pop {
+  from { opacity: 0; transform: scale(.85); }
+  to { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <a class="key" href="../" aria-label="Main menu">←</a>
+  <h1>Crowd Run</h1>
+  <span class="meta" id="meta"></span>
+</header>
+<div class="stage" id="stage">
+  <canvas id="road"></canvas>
+  <div class="overlay" id="overlay">
+    <div>
+      <strong id="ov-title"></strong>
+      <p id="ov-text"></p>
+      <button class="key primary" id="ov-go" type="button"></button>
+    </div>
+  </div>
+</div>
+<script id="app">
+'use strict';
+
+/* ------------------------------------------------------------------ *
+ * Pure logic. Everything above init() runs without a DOM so that
+ * tools/test-crowd.mjs can evaluate this script in Node.
+ *
+ * The road runs along z and spans x = -1..1. Gate pairs split it in a
+ * left and a right half; pickups stand in one lane, x = ±0.5. Enemies and
+ * the boss fill the road, so every one of them must be fought. Obstacles
+ * block parts of the road and kill whoever runs into them. Every level lays
+ * out a new road that gets harder towards the boss, and runs a little faster
+ * than the one before.
+ * ------------------------------------------------------------------ */
+
+var START = 1;
+/* Level 1 runs at START_SPEED units a second, and each level adds SPEEDUP. */
+var START_SPEED = 6;
+var SPEEDUP = 0.25;
+var SPACING = 10;
+/* Room in front of a gate that obstacles keep clear: half a second's run at
+ * the pace of level 1, less on later levels. Enough to dodge part of a saw,
+ * not always all of it. */
+var CLEAR = 3.5;
+/* Figures drawn per crowd; the count above it says how many there really are. */
+var CAP = 300;
+/* The widest a crowd gets, from its centre. */
+var MAX_RADIUS = 0.66;
+/* No crowd grows beyond this, however lucky the gates and pickups. */
+var MAX_CROWD = 999;
+/* The boss is at least this share of the crowd that meets it, so a crowd
+ * swollen by pickups spends most of its surplus there. */
+var BOSS_FLOOR = 0.7;
+/* An empty run-up of APPROACH lies between the last gate pair and the boss,
+ * which comes into sight BOSS_SIGHT ahead: once it is seen, nothing can
+ * change the crowd before the fight. */
+var APPROACH = 30;
+var BOSS_SIGHT = 25;
+/* Seconds that Rage lasts. */
+var RAGE_TIME = 4;
+var PICKUP_R = 0.14;
+var PICKUPS = ['recruits', 'shield', 'double', 'rage'];
+/* Gate pairs per road. */
+var PAIRS = 12;
+var STORAGE_KEY = 'crowd.v1';
+
+function speedFor(level) {
+  return START_SPEED + SPEEDUP * (level - 1);
+}
+
+/* How hard a level's roads are, from 0 at level 1 up to 1 at level 21. */
+function difficulty(level) {
+  return Math.min(1, (level - 1) / 20);
+}
+
+/* The boss's size as a share of what a strong run brings it. */
+function bossShare(level) {
+  return 0.82 + 0.1 * difficulty(level);
+}
+
+/* mulberry32: small, fast and good enough to lay out a road. */
+function rng(seed) {
+  var a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    var t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function applyGate(n, gate) {
+  if (gate.op === '+') return Math.min(MAX_CROWD, n + gate.k);
+  if (gate.op === '-') return Math.max(0, n - gate.k);
+  if (gate.op === 'x') return Math.min(MAX_CROWD, n * gate.k);
+  return Math.floor(n / gate.k);
+}
+
+function harmful(gate) {
+  return gate.op === '-' || gate.op === '/';
+}
+
+function gateLabel(gate) {
+  var signs = { '+': '+', '-': '−', 'x': '×', '/': '÷' };
+  return signs[gate.op] + gate.k;
+}
+
+/* Both sides lose people one for one until one side runs out. With Rage each
+ * of yours counts double, so you lose half as many. */
+function fight(you, them, rage) {
+  var power = you;
+  if (rage) power = you * 2;
+  if (power <= them) return { you: 0, them: them - power };
+  var lost = them;
+  if (rage) lost = Math.ceil(them / 2);
+  return { you: you - lost, them: 0 };
+}
+
+/* How far a crowd of n reaches from its centre, which is also how wide it is
+ * drawn. It grows with the square root of n up to 120, then with its
+ * logarithm, until MAX_RADIUS at about 2000. A crowd that big no longer fits
+ * in half the road, so saws are hard to avoid, but it can still pass a pickup
+ * in the other lane. */
+function crowdRadius(n) {
+  var r = 0.08 + 0.031 * Math.sqrt(Math.min(n, 120));
+  if (n > 120) r += 0.06 * Math.log2(n / 120);
+  return Math.min(MAX_RADIUS, r);
+}
+
+/* Offsets of each drawn figure from the crowd's centre, as a sunflower. */
+function crowdLayout(n) {
+  var m = Math.min(n, CAP);
+  var r = crowdRadius(n) * 0.9;
+  var points = [];
+  for (var k = 0; k < m; k++) {
+    var d = r * Math.sqrt((k + 0.5) / m);
+    var a = k * 2.39996;
+    points.push({ x: d * Math.cos(a), z: d * Math.sin(a) });
+  }
+  return points;
+}
+
+/* The share of a disc of radius r at x that lies left of c. */
+function discLeftOf(x, r, c) {
+  var u = Math.max(-1, Math.min(1, (c - x) / r));
+  return (u * Math.sqrt(1 - u * u) + Math.asin(u)) / Math.PI + 0.5;
+}
+
+/* The share of a crowd at x that runs into blocks, a list of [from, to]
+ * stretches across the road. */
+function overlap(x, r, blocks) {
+  return blocks.reduce(function (sum, b) {
+    return sum + discLeftOf(x, r, b[1]) - discLeftOf(x, r, b[0]);
+  }, 0);
+}
+
+function shaveLoss(n, x, blocks) {
+  return Math.round(n * Math.min(1, overlap(x, crowdRadius(n), blocks)));
+}
+
+/* Where between lo and hi a crowd of n loses the fewest people to blocks.
+ * Of equally good spots it takes the one nearest the middle of the range,
+ * well clear of the line between two gates. */
+function bestX(n, blocks, lo, hi) {
+  var r = crowdRadius(n);
+  var from = Math.max(lo, -1 + r);
+  var to = Math.min(hi, 1 - r);
+  var mid = (from + to) / 2;
+  var best = { x: from, lost: shaveLoss(n, from, blocks) };
+  for (var x = from; x <= to; x += 0.01) {
+    var lost = shaveLoss(n, x, blocks);
+    var closer = Math.abs(x - mid) < Math.abs(best.x - mid);
+    if (lost < best.lost || (lost === best.lost && closer)) best = { x: x, lost: lost };
+  }
+  return best;
+}
+
+/* n is the best count reachable so far, which keeps losses in proportion to
+ * the crowd a good player has. Gains are absolute and the only multiplier is
+ * ×2, which keeps pickups from snowballing into huge crowds. */
+function goodGate(rand, t) {
+  if (rand() < 0.4) return { op: 'x', k: 2 };
+  return { op: '+', k: 3 + Math.floor(rand() * (8 + 17 * t)) };
+}
+
+function badGate(rand, t, n) {
+  if (rand() < 0.4) {
+    var k = 2;
+    if (rand() < t) k = 3;
+    return { op: '/', k: k };
+  }
+  return { op: '-', k: 1 + Math.round(n * (0.3 + rand() * 0.4)) };
+}
+
+function pickup(type, z, x, n) {
+  var item = { z: z, kind: 'pickup', x: x, type: type };
+  if (type === 'recruits') item.count = 3 + Math.round(n * 0.15);
+  return item;
+}
+
+/* An obstacle of the given kind. A wall has a gap that narrows as t grows;
+ * a saw stands somewhere on the road; a guard is a saw in the lane of the
+ * better gate, so reaching it means steering around the saw, while the other
+ * half of the road stays clear. Either way a crowd of up to about 20 fits
+ * past unharmed. */
+function obstacle(rand, t, z, kind, better) {
+  if (kind === 'wall') {
+    var gap = 0.9 - 0.45 * t + rand() * 0.15;
+    var g0 = -1 + rand() * (2 - gap);
+    return { z: z, kind: 'obstacle', type: 'wall', blocks: [[-1, g0], [g0 + gap, 1]] };
+  }
+  if (kind === 'guard') {
+    var centre = 0.5 + (rand() - 0.5) * 0.2;
+    if (better === 'left') centre = -centre;
+    var half = 0.175 + rand() * 0.1;
+    return { z: z, kind: 'obstacle', type: 'saw', blocks: [[centre - half, centre + half]] };
+  }
+  var width = 0.4 + rand() * 0.3;
+  var a = -1 + rand() * (2 - width);
+  return { z: z, kind: 'obstacle', type: 'saw', blocks: [[a, a + width]] };
+}
+
+/* A strong run's next move: where to be and how many are left after item.
+ * At a gate pair that is the middle of the side that ends up with more.
+ * x is null where it does not matter. */
+function bestMove(n, item) {
+  if (item.kind === 'gates') {
+    var viaLeft = applyGate(n, item.left);
+    var viaRight = applyGate(n, item.right);
+    if (viaLeft >= viaRight) return { x: -0.5, n: viaLeft };
+    return { x: 0.5, n: viaRight };
+  }
+  if (item.kind === 'obstacle') {
+    var spot = bestX(n, item.blocks, -1, 1);
+    return { x: spot.x, n: n - spot.lost };
+  }
+  if (item.kind === 'enemy') return { x: null, n: fight(n, item.count, false).you };
+  return { x: null, n: n };
+}
+
+function shuffle(rand, list) {
+  var out = list.slice();
+  for (var i = out.length - 1; i > 0; i--) {
+    var j = Math.floor(rand() * (i + 1));
+    var swap = out[i];
+    out[i] = out[j];
+    out[j] = swap;
+  }
+  return out;
+}
+
+/* A deck holding each card as many times as counts says: [[card, n], ...]. */
+function deck(counts) {
+  return counts.reduce(function (out, entry) {
+    for (var i = 0; i < entry[1]; i++) out.push(entry[0]);
+    return out;
+  }, []);
+}
+
+/* Deals a deck so the road gets harder as it goes: sorted by hardness, cut
+ * into thirds, and each third shuffled on its own. */
+function ramp(rand, cards, hardness) {
+  var sorted = cards.slice().sort(function (a, b) {
+    return hardness(a) - hardness(b);
+  });
+  var third = Math.ceil(sorted.length / 3);
+  return [0, 1, 2].reduce(function (out, i) {
+    return out.concat(shuffle(rand, sorted.slice(i * third, (i + 1) * third)));
+  }, []);
+}
+
+var GATE_HARDNESS = { plain: 0, close: 1, bad: 2 };
+var OBSTACLE_HARDNESS = { none: 0, saw: 1, wall: 1, guard: 2 };
+
+/* The road alternates gate pairs and enemies, from a pair to the last pair
+ * before the boss. Every pair has at least one side that does not shrink the
+ * crowd, and its two sides never give the same count.
+ *
+ * What a road holds is dealt from decks rather than rolled item by item, so
+ * every road of a level has the same number of bad pairs, close calls,
+ * obstacles, hidden gates, pickups and the same spread of enemy sizes, just
+ * in a different order and with different gates. Harder levels get harder
+ * decks. Within a road the decks are dealt easiest third first.
+ *
+ * best follows a strong run (bestMove), and enemies are sized against it:
+ * at most half of it, so it always gets through. The boss is sized last, as
+ * a share of what that run brings that grows with the level, so the finish
+ * is equally tight on every road of a level and tighter on later levels. */
+function generateCourse(seed, level) {
+  var rand = rng(seed);
+  var d = difficulty(level);
+  var stretches = PAIRS - 1;
+  var bad = Math.round(4 + 3 * d);
+  var close = Math.round(3 + d);
+  var gates = ['plain'].concat(ramp(rand, deck([['plain', stretches - bad - close], ['close', close], ['bad', bad]]), function (card) {
+    return GATE_HARDNESS[card];
+  }));
+  var guards = Math.round(1 + 2 * d);
+  var walls = Math.round(2 + 2 * d);
+  var saws = Math.round(1 + d);
+  var obstacles = ramp(rand, deck([['none', stretches - guards - walls - saws], ['saw', saws], ['wall', walls], ['guard', guards]]), function (card) {
+    return OBSTACLE_HARDNESS[card];
+  });
+  var lo = 0.15 + 0.1 * d;
+  var hi = 0.35 + 0.15 * d;
+  var shares = ramp(rand, Array.from({ length: stretches }, function (_, i) {
+    return lo + (hi - lo) * i / (stretches - 1);
+  }), function (share) {
+    return share;
+  });
+  var hidden = Math.round(2 + 3 * d);
+  var hides = shuffle(rand, deck([[true, hidden], [false, stretches - hidden]]));
+  var pickups = shuffle(rand, deck([['recruits', 2], ['shield', 1], ['double', 1], ['rage', 1], [null, stretches - 5]]));
+
+  var items = [];
+  var best = START;
+  var z = SPACING * 1.5;
+  for (var s = 0; s < PAIRS; s++) {
+    var t = d + (1 - d) * 0.7 * s / (PAIRS - 1);
+    var i = s - 1;
+    var type = null;
+    if (s > 0) type = pickups[i];
+    /* A pickup sits in the middle of the stretch when an obstacle needs the
+     * room in front of the gate, and on the worse gate's side otherwise. */
+    if (type && obstacles[i] !== 'none') {
+      var lane = 0.5;
+      if (rand() < 0.5) lane = -0.5;
+      items.push(pickup(type, z - SPACING * 1.5, lane, best));
+    }
+    if (s > 0) {
+      var count = Math.max(1, Math.min(best - 1, Math.floor(best * shares[i])));
+      items.push({ z: z - SPACING, kind: 'enemy', count: count });
+      best -= count;
+    }
+    var pair = gatePair(rand, t, best, gates[s]);
+    pair.z = z;
+    if (s > 0 && obstacles[i] !== 'none') {
+      var block = obstacle(rand, t, z - CLEAR, obstacles[i], betterSide(best, pair));
+      items.push(block);
+      best = bestMove(best, block).n;
+      while (applyGate(best, pair.left) === applyGate(best, pair.right) && applyGate(best, pair.left) < MAX_CROWD) {
+        pair.right = goodGate(rand, t);
+      }
+    }
+    if (type && obstacles[i] === 'none') {
+      var worse = 0.5;
+      if (betterSide(best, pair) === 'right') worse = -0.5;
+      items.push(pickup(type, z - SPACING * 0.4, worse, best));
+    }
+    if (s > 0 && hides[i]) {
+      pair.hidden = 'right';
+      if (rand() < 0.5) pair.hidden = 'left';
+    }
+    items.push(pair);
+    best = bestMove(best, pair).n;
+    z += SPACING * 2;
+  }
+  z += APPROACH - SPACING * 2;
+  var boss = Math.max(1, Math.floor(bossShare(level) * best));
+  items.push({ z: z, kind: 'boss', count: boss });
+  return { length: z + SPACING, items: items };
+}
+
+function betterSide(n, pair) {
+  if (applyGate(n, pair.left) >= applyGate(n, pair.right)) return 'left';
+  return 'right';
+}
+
+/* A pair of the given kind: plain has two good sides, close pits ×2
+ * against an addition worth about the same, and bad has one side that
+ * shrinks the crowd. Once a crowd is at MAX_CROWD every good gate gives the
+ * same, so there is no choice left to make. */
+function gatePair(rand, t, n, kind) {
+  var a = goodGate(rand, t);
+  var b = goodGate(rand, t);
+  if (kind === 'bad') {
+    b = badGate(rand, t, n);
+  } else if (kind === 'close') {
+    a = { op: 'x', k: 2 };
+    b = { op: '+', k: Math.max(1, Math.round(n * (0.75 + rand() * 0.5))) };
+  }
+  while (applyGate(n, a) === applyGate(n, b) && applyGate(n, a) < MAX_CROWD) b = goodGate(rand, t);
+  if (rand() < 0.5) return { z: 0, kind: 'gates', left: b, right: a };
+  return { z: 0, kind: 'gates', left: a, right: b };
+}
+
+/* The count a strong run brings to the boss, without pickups: bestMove at
+ * every item. A bigger crowd is also wider, so this is not always the very
+ * best there is, but it is a run a player can make. */
+function bestOutcome(course) {
+  return course.items.reduce(function (n, item) {
+    return bestMove(n, item).n;
+  }, START);
+}
+
+/* speed is how many units of road the crowd covers a second; bossCount is
+ * the boss's size once it has been sighted, 0 before. */
+function newRun(speed) {
+  return { n: START, x: 0, z: 0, speed: speed, shield: false, double: false, rageUntil: -1, bossCount: 0 };
+}
+
+/* Fixes the boss's size when it comes into sight: its own count, or
+ * BOSS_FLOOR of the crowd if that is more. Any crowd beats a boss sized by
+ * BOSS_FLOOR, and a strong run beats the boss as generated. */
+function sightBoss(run, boss) {
+  if (run.bossCount) return run;
+  return Object.assign({}, run, { bossCount: Math.max(boss.count, Math.floor(run.n * BOSS_FLOOR)) });
+}
+
+/* Takes lost people from next, unless its shield takes the hit instead. */
+function hurt(next, lost) {
+  if (lost <= 0) return;
+  if (next.shield) {
+    next.shield = false;
+    return;
+  }
+  next.n -= lost;
+}
+
+/* Resolves one item as the crowd reaches it. hit says whether the crowd
+ * touched it, so an enemy, pickup or boss can come off the road. */
+function applyItem(run, item) {
+  var next = Object.assign({}, run);
+  var rage = run.z < run.rageUntil;
+  if (item.kind === 'gates') {
+    var gate = item.right;
+    if (run.x < 0) gate = item.left;
+    var n = applyGate(next.n, gate);
+    if (run.double) n = applyGate(n, gate);
+    next.double = false;
+    hurt(next, next.n - n);
+    if (n > next.n) next.n = n;
+    return { run: next, hit: true };
+  }
+  if (item.kind === 'obstacle') {
+    var lost = shaveLoss(run.n, run.x, item.blocks);
+    hurt(next, lost);
+    return { run: next, hit: lost > 0 };
+  }
+  /* Enemies fill the road. A shield holds off an enemy, but is no match
+   * for the boss. */
+  if (item.kind === 'enemy' && run.shield) {
+    next.shield = false;
+    return { run: next, hit: true };
+  }
+  if (item.kind === 'enemy' || item.kind === 'boss') {
+    var foe = item.count;
+    if (item.kind === 'boss' && run.bossCount) foe = run.bossCount;
+    next.n = fight(run.n, foe, rage).you;
+    return { run: next, hit: true };
+  }
+  if (Math.abs(run.x - item.x) >= crowdRadius(run.n) + PICKUP_R) return { run: run, hit: false };
+  if (item.type === 'recruits') {
+    next.n = Math.min(MAX_CROWD, run.n + item.count);
+  } else if (item.type === 'shield') {
+    next.shield = true;
+  } else if (item.type === 'double') {
+    next.double = true;
+  } else {
+    next.rageUntil = run.z + RAGE_TIME * run.speed;
+  }
+  return { run: next, hit: true };
+}
+
+function serialize(progress) {
+  return JSON.stringify({ version: 3, best: progress.best });
+}
+
+function deserialize(text) {
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+  if (!data || data.version !== 3) return null;
+  if (!Number.isInteger(data.best) || data.best < 0) return null;
+  return { best: data.best };
+}
+
+/* ------------------------------------------------------------------ *
+ * UI
+ * ------------------------------------------------------------------ */
+
+function init() {
+  var stageEl = document.getElementById('stage');
+  var canvas = document.getElementById('road');
+  var ctx = canvas.getContext('2d');
+  var overlayEl = document.getElementById('overlay');
+  var titleEl = document.getElementById('ov-title');
+  var textEl = document.getElementById('ov-text');
+  var goBtn = document.getElementById('ov-go');
+  var metaEl = document.getElementById('meta');
+
+  /* The camera sits CAM behind the crowd; nothing nearer than NEAR or
+   * further than VIEW is drawn. */
+  var CAM = 4;
+  var NEAR = 0.5;
+  var VIEW = 70;
+  var GATE_H = 0.6;
+  var WALL_H = 0.3;
+  var FIG = 0.1;
+  var PHI = (1 + Math.sqrt(5)) / 2;
+  var STEER = 2.6;
+
+  /* best is the most levels cleared in one game; bestBefore is what it was
+   * when this game began, to tell whether it has been beaten. */
+  var progress = load() || { best: 0 };
+  var bestBefore = progress.best;
+  var level = 1;
+  var course = null;
+  var run = null;
+  var done = [];
+  var gone = [];
+  var floats = [];
+  var target = 0;
+  var mode = 'ready';
+  var keys = { left: false, right: false };
+  var drag = null;
+  var last = 0;
+  var clock = 0;
+  var W = 0;
+  var H = 0;
+  var horizon = 0;
+  var groundY = 0;
+  var roadPx = 0;
+  var colours = {};
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, serialize(progress));
+    } catch (e) {
+      /* private mode / quota: the game still works, it just forgets. */
+    }
+  }
+
+  function load() {
+    try {
+      return deserialize(localStorage.getItem(STORAGE_KEY));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function readColours() {
+    var style = getComputedStyle(document.documentElement);
+    ['sky', 'grass', 'road', 'stripe', 'crowd', 'enemy', 'good', 'bad', 'recruit', 'shield', 'double', 'rage', 'ink', 'panel', 'hazard', 'sun']
+      .forEach(function (name) {
+        colours[name] = style.getPropertyValue('--' + name).trim();
+      });
+  }
+
+  function resize() {
+    var dpr = window.devicePixelRatio || 1;
+    W = stageEl.clientWidth;
+    H = stageEl.clientHeight;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    /* The golden section of the golden section: 1/φ³ of the height is sky. */
+    horizon = H / (PHI * PHI * PHI);
+    groundY = H * 0.84;
+    roadPx = Math.min(W * 0.44, H * 0.42);
+    draw();
+  }
+
+  function proj(x, z, h) {
+    var d = z - run.z + CAM;
+    if (d < NEAR) return null;
+    var k = CAM / d;
+    return { x: W / 2 + x * roadPx * k, y: horizon + (groundY - horizon) * k - h * roadPx * k, k: k };
+  }
+
+  function quad(a, b, c, d, colour) {
+    ctx.fillStyle = colour;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.lineTo(c.x, c.y);
+    ctx.lineTo(d.x, d.y);
+    ctx.fill();
+  }
+
+  function label(text, p, px, colour) {
+    if (px < 7) return;
+    ctx.font = '700 ' + px + 'px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    var w = ctx.measureText(text).width + px * 0.8;
+    ctx.fillStyle = colour;
+    ctx.beginPath();
+    ctx.roundRect(p.x - w / 2, p.y - px * 0.7, w, px * 1.4, px * 0.7);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(text, p.x, p.y);
+  }
+
+  function person(p, colour, size) {
+    var s = FIG * size * roadPx * p.k;
+    ctx.fillStyle = colour;
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y - s * 0.45, s * 0.3, s * 0.45, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(p.x, p.y - s * 1.05, s * 0.22, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /* spread stretches the cluster sideways, which enemies use to fill the
+   * road; size scales each figure and the cluster's depth with it, which
+   * makes the boss loom. */
+  function crowd(cx, cz, n, colour, spread, size) {
+    var scale = 1;
+    if (size) scale = size;
+    var points = crowdLayout(n).map(function (o, i) {
+      return { x: cx + o.x * spread, z: cz + o.z * scale, i: i };
+    });
+    points.sort(function (a, b) {
+      return b.z - a.z;
+    });
+    points.forEach(function (o) {
+      var p = proj(o.x, o.z, 0.02 * Math.abs(Math.sin(clock * 12 + o.i)));
+      if (p) person(p, colour, scale);
+    });
+    var top = proj(cx, cz, crowdRadius(n) * 0.4 + 0.22 * scale);
+    if (top) label(String(n), top, Math.round(0.14 * scale * roadPx * top.k), colour);
+  }
+
+  /* A little sun with a soft glow, at the golden sections of the sky. */
+  function drawSun() {
+    var x = W / PHI;
+    var y = horizon / (PHI * PHI);
+    var r = Math.min(W, H) * 0.045;
+    ctx.fillStyle = colours.sun;
+    ctx.globalAlpha = 0.25;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 1.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawRoad() {
+    ctx.fillStyle = colours.sky;
+    ctx.fillRect(0, 0, W, horizon + 1);
+    drawSun();
+    ctx.fillStyle = colours.grass;
+    ctx.fillRect(0, horizon, W, H - horizon);
+    var near = run.z - CAM + NEAR + 0.01;
+    var far = run.z + VIEW;
+    /* The road itself runs on until it meets the horizon. */
+    var end = run.z + 100 * VIEW;
+    quad(proj(-1, near, 0), proj(1, near, 0), proj(1, end, 0), proj(-1, end, 0), colours.road);
+    for (var z = Math.floor(near / 4) * 4; z < far; z += 4) {
+      if (z + 2 <= near) continue;
+      var a = Math.max(z, near);
+      quad(proj(-0.025, a, 0), proj(0.025, a, 0), proj(0.025, z + 2, 0), proj(-0.025, z + 2, 0), colours.stripe);
+    }
+  }
+
+  /* An upright rectangle across the road from x = a to b, h tall. */
+  function panel(a, b, z, h, colour) {
+    var bottom = proj(a, z, 0);
+    var top = proj(b, z, h);
+    if (!bottom) return;
+    ctx.fillStyle = colour;
+    ctx.fillRect(bottom.x, top.y, top.x - bottom.x, bottom.y - top.y);
+  }
+
+  /* A saw is a spinning disc standing on the road. */
+  function saw(a, b, z) {
+    var centre = proj((a + b) / 2, z, (b - a) / 2);
+    if (!centre) return;
+    var r = (b - a) / 2 * roadPx * centre.k;
+    ctx.fillStyle = colours.hazard;
+    ctx.beginPath();
+    ctx.arc(centre.x, centre.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = colours.road;
+    ctx.lineWidth = Math.max(1, r * 0.12);
+    for (var i = 0; i < 3; i++) {
+      var angle = clock * 6 + i * Math.PI / 3;
+      ctx.beginPath();
+      ctx.moveTo(centre.x - Math.cos(angle) * r * 0.8, centre.y - Math.sin(angle) * r * 0.8);
+      ctx.lineTo(centre.x + Math.cos(angle) * r * 0.8, centre.y + Math.sin(angle) * r * 0.8);
+      ctx.stroke();
+    }
+  }
+
+  function drawObstacle(item) {
+    item.blocks.forEach(function (b) {
+      if (item.type === 'saw') {
+        saw(b[0], b[1], item.z);
+      } else if (b[1] > b[0]) {
+        panel(b[0], b[1], item.z, WALL_H, colours.hazard);
+      }
+    });
+  }
+
+  function drawGates(item) {
+    [[-1, 0, item.left, 'left'], [0, 1, item.right, 'right']].forEach(function (side) {
+      var bottom = proj(side[0], item.z, 0);
+      var top = proj(side[1], item.z, GATE_H);
+      if (!bottom) return;
+      var text = gateLabel(side[2]);
+      var colour = colours.good;
+      if (harmful(side[2])) colour = colours.bad;
+      if (item.hidden === side[3] && run.z < item.z - run.speed) {
+        text = '?';
+        colour = colours.recruit;
+      }
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = colour;
+      ctx.fillRect(bottom.x, top.y, top.x - bottom.x, bottom.y - top.y);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = Math.max(1, 0.03 * roadPx * bottom.k);
+      ctx.strokeRect(bottom.x, top.y, top.x - bottom.x, bottom.y - top.y);
+      var mid = proj((side[0] + side[1]) / 2, item.z, GATE_H * 0.55);
+      label(text, mid, Math.round(0.2 * roadPx * mid.k), colour);
+    });
+  }
+
+  function drawPickup(item) {
+    if (item.type === 'recruits') {
+      crowd(item.x, item.z, item.count, colours.recruit, 1);
+      return;
+    }
+    var p = proj(item.x, item.z, 0.2 + 0.04 * Math.sin(clock * 5));
+    if (!p) return;
+    var names = { shield: 'Shield', double: '×2 next', rage: 'Rage' };
+    label(names[item.type], p, Math.round(0.13 * roadPx * p.k), colours[item.type]);
+  }
+
+  /* Enemies and the boss spread across the road; the boss stands behind a
+   * finish line. */
+  /* size also sets the crowd back, so a big one stays behind the finish line. */
+  function drawWall(item, count, size) {
+    var scale = 1;
+    if (size) scale = size;
+    var r = crowdRadius(count);
+    crowd(0, item.z + 0.1 + r * scale, count, colours.enemy, 0.9 / r, scale);
+  }
+
+  function drawBoss(item) {
+    var a = proj(-1, item.z - 0.6, 0);
+    if (!a) return;
+    for (var c = 0; c < 10; c++) {
+      if (c % 2 === 0) {
+        var x0 = -1 + c * 0.2;
+        quad(proj(x0, item.z - 0.6, 0), proj(x0 + 0.2, item.z - 0.6, 0), proj(x0 + 0.2, item.z - 0.4, 0), proj(x0, item.z - 0.4, 0), colours.ink);
+      }
+    }
+    if (!run.bossCount) return;
+    /* It fades in out of the haze over the first few units after it is sighted. */
+    ctx.globalAlpha = Math.max(0, Math.min(1, (BOSS_SIGHT - (item.z - run.z)) / 4));
+    drawWall(item, run.bossCount, 2.2);
+    ctx.globalAlpha = 1;
+  }
+
+  /* Blends two #rrggbb colours: t = 0 gives a, t = 1 gives b. */
+  function blend(a, b, t) {
+    var mixed = [1, 3, 5].map(function (i) {
+      var from = parseInt(a.slice(i, i + 2), 16);
+      var to = parseInt(b.slice(i, i + 2), 16);
+      return Math.round(from + (to - from) * t);
+    });
+    return 'rgb(' + mixed.join(', ') + ')';
+  }
+
+  /* The crowd turns the Rage colour and pulses while Rage lasts. */
+  function drawPlayer() {
+    var colour = colours.crowd;
+    if (run.z < run.rageUntil) colour = blend(colours.rage, '#ffffff', 0.2 + 0.2 * Math.sin(clock * 10));
+    crowd(run.x, run.z, run.n, colour, 1);
+    if (run.double) {
+      var p = proj(run.x, run.z, crowdRadius(run.n) * 0.4 + 0.4);
+      label('×2', p, Math.round(0.1 * roadPx * p.k), colours.double);
+    }
+  }
+
+  /* A see-through wall just in front of the crowd while a shield is up. */
+  function drawShield() {
+    var r = crowdRadius(run.n) + 0.05;
+    var z = run.z + r + 0.15;
+    var bottom = proj(run.x - r, z, 0);
+    var top = proj(run.x + r, z, 0.35);
+    ctx.globalAlpha = 0.3;
+    panel(run.x - r, run.x + r, z, 0.35, colours.shield);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = colours.shield;
+    ctx.lineWidth = Math.max(2, 0.03 * roadPx * bottom.k);
+    ctx.strokeRect(bottom.x, top.y, top.x - bottom.x, bottom.y - top.y);
+  }
+
+  function draw() {
+    if (!run || !W) return;
+    drawRoad();
+    var near = run.z - CAM + NEAR;
+    var list = [];
+    course.items.forEach(function (item, i) {
+      if (!gone[i] && item.z > near && item.z < run.z + VIEW) list.push(item);
+    });
+    list.push({ kind: 'player', z: run.z });
+    if (run.shield && run.n > 0) list.push({ kind: 'shield', z: run.z + crowdRadius(run.n) + 0.2 });
+    list.sort(function (a, b) {
+      return b.z - a.z;
+    });
+    list.forEach(function (item) {
+      if (item.kind === 'gates') drawGates(item);
+      if (item.kind === 'enemy') drawWall(item, item.count);
+      if (item.kind === 'pickup') drawPickup(item);
+      if (item.kind === 'boss') drawBoss(item);
+      if (item.kind === 'obstacle') drawObstacle(item);
+      if (item.kind === 'player' && run.n > 0) drawPlayer();
+      if (item.kind === 'shield') drawShield();
+    });
+    floats.forEach(function (f) {
+      var p = proj(run.x, run.z, 0.55 + f.age * 0.5);
+      ctx.globalAlpha = Math.max(0, 1 - f.age / 0.9);
+      label(f.text, p, Math.round(0.13 * roadPx), f.colour);
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  function float(text, colour) {
+    floats.push({ text: text, colour: colour, age: 0 });
+  }
+
+  function feedback(before, after, item) {
+    if (before.shield && !after.shield) float('Blocked', colours.shield);
+    if (item.kind === 'pickup' && item.type !== 'recruits') {
+      var names = { shield: 'Shield', double: '×2 next', rage: 'Rage!' };
+      float(names[item.type], colours[item.type]);
+    }
+    var delta = after.n - before.n;
+    if (delta > 0) float('+' + delta, colours.good);
+    if (delta < 0) float('−' + -delta, colours.bad);
+  }
+
+  function update(dt) {
+    var r = crowdRadius(run.n);
+    if (keys.left) target -= STEER * dt;
+    if (keys.right) target += STEER * dt;
+    target = Math.max(-1 + r, Math.min(1 - r, target));
+    run = Object.assign({}, run, { x: run.x + (target - run.x) * Math.min(1, dt * 14), z: run.z + run.speed * dt });
+    var boss = course.items[course.items.length - 1];
+    if (boss.z - run.z <= BOSS_SIGHT) run = sightBoss(run, boss);
+    floats = floats.filter(function (f) {
+      f.age += dt;
+      return f.age < 0.9;
+    });
+    for (var i = 0; i < course.items.length && mode === 'running'; i++) {
+      var item = course.items[i];
+      if (done[i] || item.z > run.z) continue;
+      done[i] = true;
+      var before = run;
+      var result = applyItem(run, item);
+      run = result.run;
+      var vanishes = item.kind === 'enemy' || item.kind === 'pickup' || item.kind === 'boss';
+      if (result.hit && vanishes) gone[i] = true;
+      if (result.hit) feedback(before, run, item);
+      if (run.n === 0) {
+        finish(false, item);
+      } else if (item.kind === 'boss') {
+        finish(true, item);
+      }
+    }
+  }
+
+  function frame(now) {
+    if (mode !== 'running') return;
+    var dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    clock += dt;
+    update(dt);
+    draw();
+    if (mode === 'running') requestAnimationFrame(frame);
+  }
+
+  function showMeta() {
+    var text = 'Level ' + level;
+    if (progress.best > 0) text += ' · Best ' + progress.best;
+    metaEl.textContent = text;
+  }
+
+  function overlay(title, text, button) {
+    titleEl.textContent = title;
+    textEl.textContent = text;
+    goBtn.textContent = button;
+    overlayEl.hidden = false;
+    goBtn.focus();
+  }
+
+  function prepare() {
+    course = generateCourse(Math.floor(Math.random() * 4294967296), level);
+    run = newRun(speedFor(level));
+    target = 0;
+    done = [];
+    gone = [];
+    floats = [];
+    showMeta();
+    draw();
+  }
+
+  function finish(won, item) {
+    if (won) {
+      mode = 'won';
+      if (level > progress.best) {
+        progress.best = level;
+        save();
+      }
+      overlay('Level ' + level + ' cleared!', run.n + ' made it past the boss. The next level is a little faster.', 'Next level');
+      level += 1;
+    } else {
+      mode = 'lost';
+      var why = 'Your crowd ran out.';
+      if (item.kind === 'boss') why = 'The boss had ' + run.bossCount + '.';
+      var cleared = level - 1;
+      var tally = ' You cleared ' + cleared + ' levels.';
+      if (cleared === 1) tally = ' You cleared 1 level.';
+      if (cleared > bestBefore) tally += ' New best!';
+      overlay('Wiped out', why + tally + ' Want to play again?', 'Play again');
+      level = 1;
+      bestBefore = progress.best;
+    }
+    showMeta();
+  }
+
+  function start() {
+    overlayEl.hidden = true;
+    if (mode !== 'ready') prepare();
+    mode = 'running';
+    last = performance.now();
+    requestAnimationFrame(frame);
+  }
+
+  goBtn.addEventListener('click', start);
+
+  stageEl.addEventListener('pointerdown', function (ev) {
+    if (mode !== 'running') return;
+    drag = { x: ev.clientX, target: target };
+    stageEl.setPointerCapture(ev.pointerId);
+  });
+  stageEl.addEventListener('pointermove', function (ev) {
+    if (!drag) return;
+    target = drag.target + (ev.clientX - drag.x) / roadPx * 1.3;
+  });
+  ['pointerup', 'pointercancel'].forEach(function (name) {
+    stageEl.addEventListener(name, function () {
+      drag = null;
+    });
+  });
+
+  var LEFT = ['ArrowLeft', 'a', 'A'];
+  var RIGHT = ['ArrowRight', 'd', 'D'];
+  document.addEventListener('keydown', function (ev) {
+    if (LEFT.indexOf(ev.key) >= 0) keys.left = true;
+    if (RIGHT.indexOf(ev.key) >= 0) keys.right = true;
+  });
+  document.addEventListener('keyup', function (ev) {
+    if (LEFT.indexOf(ev.key) >= 0) keys.left = false;
+    if (RIGHT.indexOf(ev.key) >= 0) keys.right = false;
+  });
+
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+    readColours();
+    draw();
+  });
+  window.addEventListener('resize', resize);
+
+  readColours();
+  prepare();
+  resize();
+  overlay('Crowd Run', 'Drag to steer. Pick your gates, squeeze past the obstacles and outnumber every red crowd. Each level is a little faster.', 'Play');
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('../sw.js').catch(function () {
+        /* file:// or no HTTPS: the app runs fine, it just is not installable. */
+      });
+    });
+  }
+}
+
+if (typeof document !== 'undefined') init();
+</script>
+</body>
+</html>

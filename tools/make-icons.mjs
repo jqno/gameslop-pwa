@@ -1,5 +1,5 @@
-/* Draws the app icons: two dice for the launcher, and a small Suguru board for
- * Suguru. Each icon is a scene over the unit square, supersampled for smooth
+/* Draws the app icons: two dice for the launcher, a small Suguru board for
+ * Suguru, and a crowd heading into a gate for Crowd Run. Each icon is a scene over the unit square, supersampled for smooth
  * edges. Everything sits inside the maskable safe zone (radius 0.4). */
 import { deflateSync } from 'node:zlib';
 import { writeFileSync } from 'node:fs';
@@ -132,7 +132,8 @@ const GLYPHS = {
   2: [[...arc(0.3, 0.29, 0.24, -Math.PI, 0.2 * Math.PI), [0.06, 0.96], [0.56, 0.96]]],
   3: [arc(0.29, 0.27, 0.23, -0.85 * Math.PI, 0.5 * Math.PI), arc(0.29, 0.73, 0.23, -0.5 * Math.PI, 0.85 * Math.PI)],
   4: [[[0.44, 0.96], [0.44, 0.04], [0.04, 0.68], [0.58, 0.68]]],
-  5: [[[0.54, 0.04], [0.14, 0.04], [0.09, 0.47], ...arc(0.3, 0.66, 0.29, -0.78 * Math.PI, 0.8 * Math.PI)]]
+  5: [[[0.54, 0.04], [0.14, 0.04], [0.09, 0.47], ...arc(0.3, 0.66, 0.29, -0.78 * Math.PI, 0.8 * Math.PI)]],
+  x: [[[0.06, 0.4], [0.54, 0.96]], [[0.54, 0.4], [0.06, 0.96]]]
 };
 
 function inGlyph(digit, gx, gy, weight) {
@@ -183,7 +184,41 @@ function suguru() {
   };
 }
 
-const ICONS = [['', launcher], ['suguru/', suguru]];
+/* --- crowd run: a crowd running into a x2 gate ------------------------- */
+
+function mix(a, b, t) {
+  return a.map((v, i) => Math.round(v + (b[i] - v) * t));
+}
+
+function crowd() {
+  const gate = { left: 0.27, right: 0.73, top: 0.18, bottom: 0.44, edge: 0.02 };
+  const glyphHeight = 0.17;
+  /* Rows of figures, front row first, each a body with a head above it and a
+   * rim of background so they read as separate people. */
+  const rows = [[0.76, [0.41, 0.5, 0.59]], [0.67, [0.365, 0.455, 0.545, 0.635]], [0.58, [0.41, 0.5, 0.59]]];
+  const people = rows.flatMap(([py, xs]) => xs.map((px) => [px, py]));
+  const rim = 0.009;
+  return (x, y) => {
+    for (const [px, py] of people) {
+      const body = Math.hypot((x - px) / 0.8, y - py) - 0.03;
+      const head = Math.hypot(x - px, y - py + 0.047) - 0.02;
+      const d = Math.min(body, head);
+      if (d <= 0) return BLUE;
+      if (d <= rim) return BG;
+    }
+    const inside = x >= gate.left && x <= gate.right && y >= gate.top && y <= gate.bottom;
+    if (!inside) return BG;
+    const inner = x >= gate.left + gate.edge && x <= gate.right - gate.edge
+      && y >= gate.top + gate.edge && y <= gate.bottom - gate.edge;
+    if (!inner) return PAPER;
+    const gy = (y - (gate.top + gate.bottom) / 2) / glyphHeight + 0.5;
+    if (inGlyph('x', (x - 0.42) / glyphHeight + 0.3, gy, 0.09)) return PAPER;
+    if (inGlyph(2, (x - 0.56) / glyphHeight + 0.3, gy, 0.09)) return PAPER;
+    return mix(BG, BLUE, 0.45);
+  };
+}
+
+const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd]];
 for (const [dir, scene] of ICONS) {
   for (const size of [192, 512]) {
     const name = `${dir}icon-${size}.png`;
