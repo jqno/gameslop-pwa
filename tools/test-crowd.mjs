@@ -323,6 +323,8 @@ test('an enemy is fought wherever the crowd is', () => {
     const result = C.applyItem({ ...C.newRun(C.START_SPEED), n: 20, x }, enemy);
     assert(result.hit, `dodged from x = ${x}`);
     eq(result.run.n, 14, `fight survivors from x = ${x}`);
+    eq(result.foe, 6, 'the enemy it met');
+    eq(result.them, 0, 'what is left of the enemy');
   }
 });
 

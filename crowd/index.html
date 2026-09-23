@@ -566,7 +566,8 @@ function hurt(next, lost) {
 }
 
 /* Resolves one item as the crowd reaches it. hit says whether the crowd
- * touched it, so an enemy, pickup or boss can come off the road. */
+ * touched it, so an enemy, pickup or boss can come off the road. After a
+ * fight, foe is how many the enemy had and them how many it has left. */
 function applyItem(run, item) {
   var next = Object.assign({}, run);
   var rage = run.z < run.rageUntil;
@@ -594,8 +595,9 @@ function applyItem(run, item) {
   if (item.kind === 'enemy' || item.kind === 'boss') {
     var foe = item.count;
     if (item.kind === 'boss' && run.bossCount) foe = run.bossCount;
-    next.n = fight(run.n, foe, rage).you;
-    return { run: next, hit: true };
+    var fought = fight(run.n, foe, rage);
+    next.n = fought.you;
+    return { run: next, hit: true, foe: foe, them: fought.them };
   }
   if (Math.abs(run.x - item.x) >= crowdRadius(run.n) + PICKUP_R) return { run: run, hit: false };
   if (item.type === 'recruits') {
@@ -663,6 +665,14 @@ function init() {
   var done = [];
   var gone = [];
   var floats = [];
+  /* The fight being played out, while the crowd stands still: its outcome
+   * is already in run, and the counts on show tick down towards it. */
+  var battle = null;
+  /* When a fight has decided the game: the popup waits a moment, so the
+   * last ones standing can be seen. */
+  var ending = null;
+  /* An enemy or boss that won its fight stays on the road with what is left. */
+  var standing = null;
   var target = 0;
   var mode = 'ready';
   var keys = { left: false, right: false };
@@ -763,24 +773,20 @@ function init() {
     ctx.fill();
   }
 
-  /* spread stretches the cluster sideways, which enemies use to fill the
-   * road; size scales each figure and the cluster's depth with it, which
-   * makes the boss loom. */
-  function crowd(cx, cz, n, colour, spread, size) {
-    var scale = 1;
-    if (size) scale = size;
+  /* spread stretches the cluster sideways, which enemies use to fill the road. */
+  function crowd(cx, cz, n, colour, spread) {
     var points = crowdLayout(n).map(function (o, i) {
-      return { x: cx + o.x * spread, z: cz + o.z * scale, i: i };
+      return { x: cx + o.x * spread, z: cz + o.z, i: i };
     });
     points.sort(function (a, b) {
       return b.z - a.z;
     });
     points.forEach(function (o) {
       var p = proj(o.x, o.z, 0.02 * Math.abs(Math.sin(clock * 12 + o.i)));
-      if (p) person(p, colour, scale);
+      if (p) person(p, colour, 1);
     });
-    var top = proj(cx, cz, crowdRadius(n) * 0.4 + 0.22 * scale);
-    if (top) label(String(n), top, Math.round(0.14 * scale * roadPx * top.k), colour);
+    var top = proj(cx, cz, crowdRadius(n) * 0.4 + 0.22);
+    if (top) label(String(n), top, Math.round(0.14 * roadPx * top.k), colour);
   }
 
   /* A little sun with a soft glow, at the golden sections of the sky. */
@@ -893,12 +899,32 @@ function init() {
 
   /* Enemies and the boss spread across the road; the boss stands behind a
    * finish line. */
-  /* size also sets the crowd back, so a big one stays behind the finish line. */
-  function drawWall(item, count, size) {
-    var scale = 1;
-    if (size) scale = size;
+  function drawWall(item) {
+    var count = item.count;
+    if (battle && battle.item === item) count = tick(battle.foe, battle.them);
+    if (standing && standing.item === item) count = standing.count;
+    if (count === 0) return;
     var r = crowdRadius(count);
-    crowd(0, item.z + 0.1 + r * scale, count, colours.enemy, 0.9 / r, scale);
+    crowd(0, item.z + 0.1 + r, count, colours.enemy, 0.9 / r);
+  }
+
+  /* The boss is one giant figure, taller the bigger it is, swaying a little
+   * and glaring at the crowd. */
+  function drawGiant(item, count) {
+    var size = 12 + 6 * crowdRadius(count) / MAX_RADIUS;
+    var sway = Math.sin(clock * 2) * 0.05;
+    var p = proj(sway, item.z + 0.6, 0);
+    if (!p) return;
+    person(p, colours.enemy, size);
+    var s = FIG * size * roadPx * p.k;
+    ctx.fillStyle = '#fff';
+    [-1, 1].forEach(function (side) {
+      ctx.beginPath();
+      ctx.arc(p.x + side * s * 0.08, p.y - s * 1.08, s * 0.035, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    var top = proj(sway, item.z + 0.6, FIG * size * 1.45);
+    label(String(count), top, Math.round(0.2 * roadPx * top.k), colours.enemy);
   }
 
   function drawBoss(item) {
@@ -913,7 +939,10 @@ function init() {
     if (!run.bossCount) return;
     /* It fades in out of the haze over the first few units after it is sighted. */
     ctx.globalAlpha = Math.max(0, Math.min(1, (BOSS_SIGHT - (item.z - run.z)) / 4));
-    drawWall(item, run.bossCount, 2.2);
+    var count = run.bossCount;
+    if (battle && battle.item === item) count = tick(battle.foe, battle.them);
+    if (standing && standing.item === item) count = standing.count;
+    drawGiant(item, count);
     ctx.globalAlpha = 1;
   }
 
@@ -931,9 +960,10 @@ function init() {
   function drawPlayer() {
     var colour = colours.crowd;
     if (run.z < run.rageUntil) colour = blend(colours.rage, '#ffffff', 0.2 + 0.2 * Math.sin(clock * 10));
-    crowd(run.x, run.z, run.n, colour, 1);
+    var n = shownCrowd();
+    crowd(run.x, run.z, n, colour, 1);
     if (run.double) {
-      var p = proj(run.x, run.z, crowdRadius(run.n) * 0.4 + 0.4);
+      var p = proj(run.x, run.z, crowdRadius(n) * 0.4 + 0.4);
       label('×2', p, Math.round(0.1 * roadPx * p.k), colours.double);
     }
   }
@@ -967,11 +997,11 @@ function init() {
     });
     list.forEach(function (item) {
       if (item.kind === 'gates') drawGates(item);
-      if (item.kind === 'enemy') drawWall(item, item.count);
+      if (item.kind === 'enemy') drawWall(item);
       if (item.kind === 'pickup') drawPickup(item);
       if (item.kind === 'boss') drawBoss(item);
       if (item.kind === 'obstacle') drawObstacle(item);
-      if (item.kind === 'player' && run.n > 0) drawPlayer();
+      if (item.kind === 'player' && shownCrowd() > 0) drawPlayer();
       if (item.kind === 'shield') drawShield();
     });
     floats.forEach(function (f) {
@@ -997,7 +1027,61 @@ function init() {
     if (delta < 0) float('−' + -delta, colours.bad);
   }
 
+  /* A count on show during the fight, from its value before towards after. */
+  function tick(before, after) {
+    return Math.round(before - (before - after) * Math.min(1, battle.t / battle.duration));
+  }
+
+  function shownCrowd() {
+    if (battle) return tick(battle.before.n, run.n);
+    return run.n;
+  }
+
+  /* The crowd stops for a fight as soon as its front meets the enemy. */
+  function reached(item) {
+    if (item.kind === 'enemy' || item.kind === 'boss') return item.z <= run.z + crowdRadius(run.n);
+    return item.z <= run.z;
+  }
+
+  /* Small fights go one figure at a time; big ones speed up to end in time. */
+  function startBattle(index, item, before, result) {
+    var lost = before.n - run.n;
+    var killed = result.foe - result.them;
+    battle = { index: index, item: item, before: before, foe: result.foe, them: result.them, t: 0,
+      duration: Math.min(1.5, 0.2 + 0.03 * Math.max(lost, killed)) };
+  }
+
+  function endBattle() {
+    var ended = battle;
+    battle = null;
+    if (ended.them > 0) {
+      standing = { item: ended.item, count: ended.them };
+    } else {
+      gone[ended.index] = true;
+    }
+    feedback(ended.before, run, ended.item);
+    if (run.n === 0) {
+      ending = { won: false, item: ended.item, wait: 1 };
+    } else if (ended.item.kind === 'boss') {
+      ending = { won: true, item: ended.item, wait: 1 };
+    }
+  }
+
   function update(dt) {
+    floats = floats.filter(function (f) {
+      f.age += dt;
+      return f.age < 0.9;
+    });
+    if (ending) {
+      ending.wait -= dt;
+      if (ending.wait <= 0) finish(ending.won, ending.item);
+      return;
+    }
+    if (battle) {
+      battle.t += dt;
+      if (battle.t >= battle.duration) endBattle();
+      return;
+    }
     var r = crowdRadius(run.n);
     if (keys.left) target -= STEER * dt;
     if (keys.right) target += STEER * dt;
@@ -1005,17 +1089,17 @@ function init() {
     run = Object.assign({}, run, { x: run.x + (target - run.x) * Math.min(1, dt * 14), z: run.z + run.speed * dt });
     var boss = course.items[course.items.length - 1];
     if (boss.z - run.z <= BOSS_SIGHT) run = sightBoss(run, boss);
-    floats = floats.filter(function (f) {
-      f.age += dt;
-      return f.age < 0.9;
-    });
     for (var i = 0; i < course.items.length && mode === 'running'; i++) {
       var item = course.items[i];
-      if (done[i] || item.z > run.z) continue;
+      if (done[i] || !reached(item)) continue;
       done[i] = true;
       var before = run;
       var result = applyItem(run, item);
       run = result.run;
+      if (result.foe) {
+        startBattle(i, item, before, result);
+        return;
+      }
       var vanishes = item.kind === 'enemy' || item.kind === 'pickup' || item.kind === 'boss';
       if (result.hit && vanishes) gone[i] = true;
       if (result.hit) feedback(before, run, item);
@@ -1058,6 +1142,9 @@ function init() {
     done = [];
     gone = [];
     floats = [];
+    battle = null;
+    ending = null;
+    standing = null;
     showMeta();
     draw();
   }
