@@ -201,8 +201,8 @@ var BOSS_FLOOR = 0.7;
 /* An empty run-up of APPROACH lies between the last gate pair and the boss,
  * which comes into sight BOSS_SIGHT ahead: once it is seen, nothing can
  * change the crowd before the fight. */
-var APPROACH = 30;
-var BOSS_SIGHT = 25;
+var APPROACH = 18;
+var BOSS_SIGHT = 15;
 /* Seconds that Rage lasts. */
 var RAGE_TIME = 4;
 var PICKUP_R = 0.14;
@@ -633,7 +633,9 @@ function deserialize(text) {
 function init() {
   var stageEl = document.getElementById('stage');
   var canvas = document.getElementById('road');
-  var ctx = canvas.getContext('2d');
+  /* Opaque: every frame paints the whole canvas anyway, and a see-through one
+   * has to be blended with the page, which flickers on Firefox for Android. */
+  var ctx = canvas.getContext('2d', { alpha: false });
   var overlayEl = document.getElementById('overlay');
   var titleEl = document.getElementById('ov-title');
   var textEl = document.getElementById('ov-text');
@@ -699,15 +701,22 @@ function init() {
   }
 
   function resize() {
-    var dpr = window.devicePixelRatio || 1;
+    /* Past 2× the extra pixels hardly show, but every frame has to fill them. */
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    var width = Math.round(stageEl.clientWidth * dpr);
+    var height = Math.round(stageEl.clientHeight * dpr);
+    /* Sizing a canvas clears it, and mobile browsers fire resize whenever the
+     * address bar slides, so only do it when the size really changed. */
+    if (width === canvas.width && height === canvas.height) return;
     W = stageEl.clientWidth;
     H = stageEl.clientHeight;
-    canvas.width = Math.round(W * dpr);
-    canvas.height = Math.round(H * dpr);
+    canvas.width = width;
+    canvas.height = height;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     /* The golden section of the golden section: 1/φ³ of the height is sky. */
     horizon = H / (PHI * PHI * PHI);
-    groundY = H * 0.84;
+    /* The crowd stands well above the bottom, so a thumb there hides only road. */
+    groundY = H * 0.72;
     roadPx = Math.min(W * 0.44, H * 0.42);
     draw();
   }
