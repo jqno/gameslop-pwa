@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const html = readFileSync(new URL('../suguru/index.html', import.meta.url), 'utf8');
 const match = html.match(/<script id="app">([\s\S]*?)<\/script>/);
 if (!match) throw new Error('could not find <script id="app"> in index.html');
 
@@ -22,4 +22,4 @@ const body = [...LIVE.map((name) => `get ${name}() { return ${name}; }`), ...EXP
 const factory = new Function(`${match[1]}\nreturn { ${body} };`);
 export default factory();
 export const source = match[1];
-export const file = fileURLToPath(new URL('../index.html', import.meta.url));
+export const file = fileURLToPath(new URL('../suguru/index.html', import.meta.url));

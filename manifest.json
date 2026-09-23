@@ -1,7 +1,6 @@
 {
-  "name": "Suguru",
-  "short_name": "Suguru",
-  "description": "A Suguru puzzle that generates itself in your browser.",
+  "name": "Gameslop",
+  "short_name": "Gameslop",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
