@@ -762,29 +762,42 @@ function init() {
     ctx.fillText(text, p.x, p.y);
   }
 
-  function person(p, colour, size) {
+  /* Adds a figure, a body with a head above it, to the current path, so a
+   * whole crowd can be filled at once rather than one shape at a time. */
+  function addPerson(p, size) {
     var s = FIG * size * roadPx * p.k;
+    ctx.moveTo(p.x + s * 0.3, p.y - s * 0.45);
+    ctx.ellipse(p.x, p.y - s * 0.45, s * 0.3, s * 0.45, 0, 0, Math.PI * 2);
+    ctx.moveTo(p.x + s * 0.22, p.y - s * 1.05);
+    ctx.arc(p.x, p.y - s * 1.05, s * 0.22, 0, Math.PI * 2);
+  }
+
+  function person(p, colour, size) {
     ctx.fillStyle = colour;
     ctx.beginPath();
-    ctx.ellipse(p.x, p.y - s * 0.45, s * 0.3, s * 0.45, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(p.x, p.y - s * 1.05, s * 0.22, 0, Math.PI * 2);
+    addPerson(p, size);
     ctx.fill();
   }
 
-  /* spread stretches the cluster sideways, which enemies use to fill the road. */
+  /* A crowd's figure offsets depend only on its size, so each size is
+   * worked out once. */
+  var layouts = {};
+  function layoutFor(n) {
+    if (!layouts[n]) layouts[n] = crowdLayout(n);
+    return layouts[n];
+  }
+
+  /* spread stretches the cluster sideways, which enemies use to fill the
+   * road. All figures share one colour and one fill, so their order does
+   * not matter. */
   function crowd(cx, cz, n, colour, spread) {
-    var points = crowdLayout(n).map(function (o, i) {
-      return { x: cx + o.x * spread, z: cz + o.z, i: i };
+    ctx.fillStyle = colour;
+    ctx.beginPath();
+    layoutFor(n).forEach(function (o, i) {
+      var p = proj(cx + o.x * spread, cz + o.z, 0.02 * Math.abs(Math.sin(clock * 12 + i)));
+      if (p) addPerson(p, 1);
     });
-    points.sort(function (a, b) {
-      return b.z - a.z;
-    });
-    points.forEach(function (o) {
-      var p = proj(o.x, o.z, 0.02 * Math.abs(Math.sin(clock * 12 + o.i)));
-      if (p) person(p, colour, 1);
-    });
+    ctx.fill();
     var top = proj(cx, cz, crowdRadius(n) * 0.4 + 0.22);
     if (top) label(String(n), top, Math.round(0.14 * roadPx * top.k), colour);
   }
