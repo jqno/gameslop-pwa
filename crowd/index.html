@@ -197,7 +197,7 @@ var MAX_RADIUS = 0.66;
 var MAX_CROWD = 999;
 /* The boss is at least this share of the crowd that meets it, so a crowd
  * swollen by pickups spends most of its surplus there. */
-var BOSS_FLOOR = 0.7;
+var BOSS_FLOOR = 0.85;
 /* An empty run-up of APPROACH lies between the last gate pair and the boss,
  * which comes into sight BOSS_SIGHT ahead: once it is seen, nothing can
  * change the crowd before the fight. */
@@ -222,7 +222,7 @@ function difficulty(level) {
 
 /* The boss's size as a share of what a strong run brings it. */
 function bossShare(level) {
-  return 0.82 + 0.1 * difficulty(level);
+  return 0.9 + 0.05 * difficulty(level);
 }
 
 /* mulberry32: small, fast and good enough to lay out a road. */

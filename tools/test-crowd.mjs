@@ -164,7 +164,7 @@ test('the boss comes into sight after the last gate, and nothing lies between', 
 
 test('the boss is sized once, on sight, and any crowd beats a boss sized by BOSS_FLOOR', () => {
   const boss = { z: 100, kind: 'boss', count: 40 };
-  eq(C.sightBoss({ ...C.newRun(C.START_SPEED), n: 50 }, boss).bossCount, 40, 'a crowd near the strong run meets the boss as generated');
+  eq(C.sightBoss({ ...C.newRun(C.START_SPEED), n: 45 }, boss).bossCount, 40, 'a crowd near the strong run meets the boss as generated');
   const swollen = C.sightBoss({ ...C.newRun(C.START_SPEED), n: 900 }, boss);
   eq(swollen.bossCount, Math.floor(900 * C.BOSS_FLOOR), 'a swollen crowd meets a bigger boss');
   eq(C.sightBoss({ ...swollen, n: 5 }, boss).bossCount, swollen.bossCount, 'the size never changes after sighting');
