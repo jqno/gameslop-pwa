@@ -866,7 +866,7 @@ function serialize(puzzle, state) {
   return JSON.stringify({
     version: 1,
     puzzle: puzzle,
-    state: { values: state.values, notes: state.notes, selected: state.selected, undo: state.undo }
+    state: { values: state.values, notes: state.notes, selected: state.selected, undo: state.undo, hints: state.hints }
   });
 }
 
@@ -901,15 +901,18 @@ function deserialize(text) {
   for (var i = 0; i < CELLS; i++) {
     if (p.givens[i] && s.values[i] !== p.givens[i]) return null;
   }
+  /* Saves from before the hint counter have no hints. */
+  var hints = s.hints === undefined ? [] : s.hints;
+  if (!Array.isArray(hints) || !hints.every(function (h) { return typeof h === 'string'; })) return null;
   var selected = Number.isInteger(s.selected) && s.selected >= 0 && s.selected < CELLS ? s.selected : null;
   return {
     puzzle: { rows: rows, cols: cols, regions: p.regions, givens: p.givens, solution: p.solution, difficulty: p.difficulty },
-    state: { values: s.values, notes: s.notes, selected: selected, undo: s.undo.slice(-UNDO_LIMIT) }
+    state: { values: s.values, notes: s.notes, selected: selected, undo: s.undo.slice(-UNDO_LIMIT), hints: hints }
   };
 }
 
 function freshState(puzzle) {
-  return { values: puzzle.givens.slice(), notes: new Array(puzzle.givens.length).fill(0), selected: null, undo: [] };
+  return { values: puzzle.givens.slice(), notes: new Array(puzzle.givens.length).fill(0), selected: null, undo: [], hints: [] };
 }
 
 /* ------------------------------------------------------------------ *
@@ -1038,6 +1041,15 @@ function init() {
     if (state.undo.length > UNDO_LIMIT) state.undo.shift();
   }
 
+  /* Every distinct hint shown counts once, so asking for the same one again
+   * is free. */
+  function countHint(key) {
+    if (state.hints.indexOf(key) >= 0) return;
+    state.hints.push(key);
+    save();
+    renderMeta();
+  }
+
   function clearHint() {
     hintCells = [];
     hintList = [];
@@ -1120,6 +1132,7 @@ function init() {
     if (wrong.length) {
       if (mistakeArmed) {
         hintCells = wrong;
+        countHint('wrong:' + wrong.join(','));
         setStatus(wrong.length === 1 ? 'This cell is wrong.' : 'These cells are wrong.');
       } else {
         hintCells = [];
@@ -1142,6 +1155,7 @@ function init() {
     if (hintList.length) {
       var step = hintList[hintAt];
       hintCells = [step.idx];
+      countHint('cell:' + step.idx);
       setHint(step.technique);
       render();
       return;
@@ -1153,6 +1167,7 @@ function init() {
       return;
     }
     hintCells = [empty];
+    countHint('cell:' + empty);
     setStatus('This cell can be worked out.');
     render();
   }
@@ -1187,7 +1202,14 @@ function init() {
   }
 
   function renderMeta() {
-    metaEl.textContent = DIFFICULTIES[puzzle.difficulty].label + ' · ' + puzzle.rows + '×' + puzzle.cols;
+    var text = DIFFICULTIES[puzzle.difficulty].label + ' · ' + puzzle.rows + '×' + puzzle.cols;
+    var used = state.hints.length;
+    if (used === 1) {
+      text += ' · 1 hint';
+    } else if (used > 1) {
+      text += ' · ' + used + ' hints';
+    }
+    metaEl.textContent = text;
   }
 
   /* --- the New menu: pick a difficulty and a size, then start --- */

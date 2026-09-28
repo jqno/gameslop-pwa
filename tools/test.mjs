@@ -292,12 +292,14 @@ test('state survives a save/load round trip', () => {
   state.notes[free] = bit(1) | bit(5) | S.redBit(5);
   state.selected = free;
   state.undo.push([{ idx: free, value: 0, notes: 0 }]);
+  state.hints.push('cell:' + free);
 
   const back = S.deserialize(S.serialize(p, state));
   assert(back, 'round trip returned null');
   eq(back.puzzle.regions.join(''), p.regions.join(''), 'regions');
   eq(back.puzzle.solution.join(''), p.solution.join(''), 'solution');
   eq(back.state.values.join(''), state.values.join(''), 'values');
+  eq(back.state.hints.join(), state.hints.join(), 'hints');
   eq(back.state.notes.join(''), state.notes.join(''), 'notes');
   eq(back.state.selected, free, 'selection');
   eq(JSON.stringify(back.state.undo), JSON.stringify(state.undo), 'undo stack');
@@ -375,6 +377,9 @@ test('a save keeps its grid size, and saves from before sizes load as 9x7', () =
   odd.puzzle.rows = 12;
   odd.puzzle.cols = 3;
   eq(S.deserialize(JSON.stringify(odd)), null, 'a size that is not on offer');
+  const noHints = JSON.parse(S.serialize(puzzles.easy[0], S.freshState(puzzles.easy[0])));
+  delete noHints.state.hints;
+  eq(S.deserialize(JSON.stringify(noHints)).state.hints.length, 0, 'a save from before the hint counter');
 });
 
 console.log(`\n${count - failures}/${count} passed`);
