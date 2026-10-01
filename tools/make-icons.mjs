@@ -1,5 +1,6 @@
 /* Draws the app icons: two dice for the launcher, a small Suguru board for
- * Suguru, and a crowd heading into a gate for Crowd Run. Each icon is a scene over the unit square, supersampled for smooth
+ * Suguru, a crowd heading into a gate for Crowd Run, and a row of matched gems
+ * for Gems. Each icon is a scene over the unit square, supersampled for smooth
  * edges. Everything sits inside the maskable safe zone (radius 0.4). */
 import { deflateSync } from 'node:zlib';
 import { writeFileSync } from 'node:fs';
@@ -11,6 +12,7 @@ const PAPER = [244, 246, 249];
 const LINE = [196, 203, 216];
 const INK = [27, 33, 48];
 const USER = [35, 88, 200];
+const PURPLE = [185, 140, 255];
 const SAMPLES = 4;
 
 function crc32(buf) {
@@ -218,7 +220,35 @@ function crowd() {
   };
 }
 
-const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd]];
+/* --- gems: a 3x3 patch with a matched row ------------------------------ */
+
+function gems() {
+  const cell = 0.18;
+  const size = 0.068;
+  const ring = 0.012;
+  const colours = [[BLUE, PURPLE, BLUE], [ORANGE, ORANGE, ORANGE], [PURPLE, BLUE, PURPLE]];
+  const halfW = 1.5 * cell + 0.01;
+  const halfH = 0.5 * cell + 0.01;
+  return (x, y) => {
+    const r = Math.round((y - 0.5) / cell) + 1;
+    const c = Math.round((x - 0.5) / cell) + 1;
+    if (r >= 0 && r <= 2 && c >= 0 && c <= 2) {
+      const dx = x - 0.5 - (c - 1) * cell;
+      const dy = y - 0.5 - (r - 1) * cell;
+      if (Math.abs(dx) + Math.abs(dy) <= size) {
+        /* The upper facets catch the light. */
+        if (dy < 0) return mix(colours[r][c], PAPER, 0.3);
+        return colours[r][c];
+      }
+    }
+    const outer = inRoundedBox(x - 0.5, y - 0.5, halfW, halfH, 0.05);
+    const inner = inRoundedBox(x - 0.5, y - 0.5, halfW - ring, halfH - ring, 0.05 - ring);
+    if (outer && !inner) return PAPER;
+    return BG;
+  };
+}
+
+const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems]];
 for (const [dir, scene] of ICONS) {
   for (const size of [192, 512]) {
     const name = `${dir}icon-${size}.png`;

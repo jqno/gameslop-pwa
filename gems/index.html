@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gems</title>
+<meta name="description" content="Swap neighbouring gems to make lines of three.">
+<meta name="theme-color" content="#0f1420">
+<link rel="manifest" href="../manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gameslop">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root {
+  color-scheme: light dark;
+  --width: min(100%, 520px);
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --ink: #1b2130;
+  --muted: #6b7382;
+  --btn: #ffffff;
+  --btnline: #ccd2dd;
+  --sel: #cfe0ff;
+  --accent: #2358c8;
+  --hint: #e08a00;
+  --board: #e3e7ee;
+  --cell: #d6dbe5;
+  --g0: #e0454f;
+  --g1: #f08c1c;
+  --g2: #e2bb12;
+  --g3: #2fae5a;
+  --g4: #2f7de0;
+  --g5: #8a4fd6;
+  --g6: #e04ba6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1420;
+    --panel: #161c2b;
+    --ink: #e7ebf3;
+    --muted: #8b95a8;
+    --btn: #1c2334;
+    --btnline: #313a50;
+    --sel: #2b456f;
+    --accent: #79a8ff;
+    --hint: #ffb454;
+    --board: #161c2b;
+    --cell: #1c2334;
+    --g0: #ff6b6b;
+    --g1: #ffa94d;
+    --g2: #ffd84a;
+    --g3: #4fd17a;
+    --g4: #5c9cff;
+    --g5: #b98cff;
+    --g6: #ff7ac8;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+header {
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+h1 { flex: 1; font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercase; }
+/* Moves above score, so the header still fits a narrow phone late in a big game. */
+.meta { font-size: 14px; line-height: 1.25; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; white-space: pre; }
+a.key, button.key {
+  font: inherit;
+  background: var(--btn);
+  color: var(--ink);
+  border: 1px solid var(--btnline);
+  border-radius: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+a.key { display: flex; align-items: center; justify-content: center; padding: 0 14px; font-size: 22px; text-decoration: none; }
+button.key { padding: 10px 26px; font-size: 16px; font-weight: 600; }
+header button.key { padding: 10px 16px; }
+button.key.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.key:active { background: var(--sel); }
+/* The stage takes whatever height is left, and the board is the largest
+ * square that fits in it. */
+.stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+}
+.board {
+  position: relative;
+  width: min(100cqw, 100cqh);
+  aspect-ratio: 1;
+  border-radius: 14px;
+  overflow: hidden;
+  background: repeating-conic-gradient(var(--cell) 0 25%, var(--board) 0 50%) 0 0 / 25% 25%;
+  touch-action: none;
+}
+/* A gem is one cell, moved into place with translate (percentages of its own
+ * size, so one cell each); the span inside is the drawn shape. */
+.gem {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 12.5%;
+  height: 12.5%;
+  transition: transform .26s ease-in;
+}
+.gem.swap { transition-duration: .16s; transition-timing-function: ease-in-out; }
+.gem span {
+  position: absolute;
+  inset: 12%;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, .55), transparent 45%), var(--colour);
+  transition: transform .2s ease-in, opacity .2s ease-in;
+}
+.gem.sel span { animation: pulse .5s ease-in-out infinite alternate; }
+.gem.hint { box-shadow: inset 0 0 0 3px var(--hint); border-radius: 12px; }
+.gem.hint span { animation: wiggle .6s ease-in-out infinite; }
+.gem.gone span { transform: scale(0); opacity: 0; }
+.gem.new span { animation: grow .25s ease-out; }
+/* A reshuffle takes its time, so the whole board changing does not jar. */
+.board.shuffling .gem span { transition-duration: .45s; animation-duration: .45s; }
+.c0 { --colour: var(--g0); }
+.c0 span { border-radius: 50%; }
+.c1 { --colour: var(--g1); }
+.c1 span { border-radius: 18%; inset: 16%; }
+.c2 { --colour: var(--g2); }
+.c2 span { clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); inset: 8%; }
+.c3 { --colour: var(--g3); }
+.c3 span { clip-path: polygon(50% 4%, 98% 90%, 2% 90%); inset: 8%; }
+.c4 { --colour: var(--g4); }
+.c4 span { clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0 50%); inset: 10%; }
+.c5 { --colour: var(--g5); }
+.c5 span { clip-path: polygon(50% 0, 62% 35%, 98% 35%, 69% 57%, 79% 92%, 50% 71%, 21% 92%, 31% 57%, 2% 35%, 38% 35%); inset: 6%; }
+.c6 { --colour: var(--g6); }
+.c6 span { clip-path: polygon(50% 26%, 51% 23%, 54% 16%, 62% 8%, 74% 5%, 87% 8%, 96% 17%, 100% 30%, 96% 43%, 87% 55%, 74% 67%, 62% 77%, 54% 86%, 51% 93%, 50% 95%, 49% 93%, 46% 86%, 38% 77%, 26% 67%, 13% 55%, 4% 43%, 0% 30%, 4% 17%, 13% 8%, 26% 5%, 38% 8%, 46% 16%, 49% 23%); inset: 6%; }
+@keyframes pulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.18); }
+}
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-12deg); }
+  75% { transform: rotate(12deg); }
+}
+@keyframes grow {
+  from { transform: scale(0); }
+  to { transform: none; }
+}
+/* The popup covers the whole page: with the choices in it, it is taller than
+ * the board on a phone. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+  background: rgba(8, 12, 22, .45);
+}
+.overlay[hidden] { display: none; }
+.overlay > div {
+  width: min(100%, 340px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 26px 20px;
+  text-align: center;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 18px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .35);
+  animation: pop .3s ease-out;
+}
+.overlay strong { font-size: 28px; line-height: 1.1; color: var(--accent); }
+.overlay p { margin: 0; color: var(--muted); }
+.overlay h2 {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.overlay h2 small { font-weight: 400; letter-spacing: 0; text-transform: none; }
+.chips { width: 100%; display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+#colours { grid-template-columns: repeat(3, 1fr); }
+.chip {
+  font: inherit;
+  font-size: 14px;
+  min-height: 38px;
+  padding: 0;
+  border: 1px solid var(--btnline);
+  border-radius: 8px;
+  background: var(--btn);
+  color: var(--ink);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.overlay p#ov-best { color: var(--ink); font-weight: 600; }
+@keyframes pop {
+  from { opacity: 0; transform: scale(.85); }
+  to { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <a class="key" href="../" aria-label="Main menu">←</a>
+  <h1>Gems</h1>
+  <span class="meta" id="meta"></span>
+  <button class="key" id="hintbtn" type="button">Hint</button>
+</header>
+<div class="stage">
+  <div class="board" id="board"></div>
+</div>
+<div class="overlay" id="overlay">
+  <div>
+    <strong id="ov-title"></strong>
+    <p id="ov-text"></p>
+    <h2>Target <small>points</small></h2>
+    <div class="chips" id="targets"></div>
+    <h2>Colours <small>fewer is easier</small></h2>
+    <div class="chips" id="colours"></div>
+    <p id="ov-best"></p>
+    <button class="key primary" id="ov-go" type="button">Play</button>
+  </div>
+</div>
+<script id="app">
+'use strict';
+
+/* ------------------------------------------------------------------ *
+ * Rules
+ * ------------------------------------------------------------------ */
+
+/* The board is SIZE x SIZE cells, row by row, each holding a colour from 0 up
+ * to the number in play, which is one of COLOURS. */
+var SIZE = 8;
+var COLOURS = [5, 6, 7];
+var TARGETS = [500, 1000, 2000, 4000, 8000];
+/* Each cleared gem scores POINTS, and a line of four or of five or more adds
+ * its BONUS. Every wave of a cascade multiplies its points by its number. */
+var POINTS = 10;
+var BONUS = { 4: 50, 5: 150 };
+var STORAGE_KEY = 'gems.v1';
+
+/* Every row and every column, as lists of cell indices. */
+var LINES = (function () {
+  var lines = [];
+  for (var k = 0; k < SIZE; k++) {
+    var row = [];
+    var col = [];
+    for (var j = 0; j < SIZE; j++) {
+      row.push(k * SIZE + j);
+      col.push(j * SIZE + k);
+    }
+    lines.push(row, col);
+  }
+  return lines;
+})();
+
+function rng(seed) {
+  var a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    var t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function randomGem(rand, colours) {
+  return Math.floor(rand() * colours);
+}
+
+/* Whether gem at i would finish a line of three with the two cells to its
+ * left or the two above it: the only lines possible while filling in order. */
+function makesLine(board, i, gem) {
+  var left = i % SIZE >= 2 && board[i - 1] === gem && board[i - 2] === gem;
+  var up = i >= 2 * SIZE && board[i - SIZE] === gem && board[i - 2 * SIZE] === gem;
+  return left || up;
+}
+
+/* Every line of three or more of one colour, as a list of its cells. */
+function findLines(board) {
+  var found = [];
+  LINES.forEach(function (line) {
+    var start = 0;
+    for (var k = 1; k <= line.length; k++) {
+      if (k === line.length || board[line[k]] !== board[line[start]]) {
+        if (k - start >= 3) found.push(line.slice(start, k));
+        start = k;
+      }
+    }
+  });
+  return found;
+}
+
+/* The cells in any line, each once, in order. */
+function findMatches(board) {
+  var hit = {};
+  findLines(board).forEach(function (line) {
+    line.forEach(function (i) { hit[i] = true; });
+  });
+  return Object.keys(hit).map(Number).sort(function (a, b) { return a - b; });
+}
+
+function isAdjacent(a, b) {
+  var sameRow = Math.floor(a / SIZE) === Math.floor(b / SIZE);
+  if (sameRow) return Math.abs(a - b) === 1;
+  return Math.abs(a - b) === SIZE;
+}
+
+function swap(board, a, b) {
+  var next = board.slice();
+  next[a] = board[b];
+  next[b] = board[a];
+  return next;
+}
+
+function isValidMove(board, a, b) {
+  if (!isAdjacent(a, b)) return false;
+  return findMatches(swap(board, a, b)).length > 0;
+}
+
+/* Every swap that makes a line, as [a, b] pairs. */
+function findMoves(board) {
+  var moves = [];
+  for (var i = 0; i < board.length; i++) {
+    if (i % SIZE < SIZE - 1 && isValidMove(board, i, i + 1)) moves.push([i, i + 1]);
+    if (i < SIZE * (SIZE - 1) && isValidMove(board, i, i + SIZE)) moves.push([i, i + SIZE]);
+  }
+  return moves;
+}
+
+function hasMove(board) {
+  return findMoves(board).length > 0;
+}
+
+/* A board with no lines on it and at least one move to make. */
+function newBoard(rand, colours) {
+  for (;;) {
+    var board = [];
+    for (var i = 0; i < SIZE * SIZE; i++) {
+      var gem = randomGem(rand, colours);
+      while (makesLine(board, i, gem)) gem = randomGem(rand, colours);
+      board.push(gem);
+    }
+    if (hasMove(board)) return board;
+  }
+}
+
+/* The same gems rearranged into a board with no lines and a move to make.
+ * Should the gems somehow not allow one, a fresh board will do. */
+function reshuffle(board, rand, colours) {
+  for (var tries = 0; tries < 1000; tries++) {
+    var next = board.slice();
+    for (var i = next.length - 1; i > 0; i--) {
+      var j = Math.floor(rand() * (i + 1));
+      var t = next[i];
+      next[i] = next[j];
+      next[j] = t;
+    }
+    if (findMatches(next).length === 0 && hasMove(next)) return next;
+  }
+  return newBoard(rand, colours);
+}
+
+/* Takes the cleared cells out, drops what is above them and fills each column
+ * from the top. falls lists every gem that moves, by column and row; a new
+ * gem starts above the board, at a negative row. */
+function collapse(board, cleared, rand, colours) {
+  var next = board.slice();
+  var falls = [];
+  for (var c = 0; c < SIZE; c++) {
+    var to = SIZE - 1;
+    for (var r = SIZE - 1; r >= 0; r--) {
+      if (cleared.indexOf(r * SIZE + c) < 0) {
+        next[to * SIZE + c] = board[r * SIZE + c];
+        if (to !== r) falls.push({ col: c, from: r, to: to });
+        to--;
+      }
+    }
+    for (var k = to; k >= 0; k--) {
+      next[k * SIZE + c] = randomGem(rand, colours);
+      falls.push({ col: c, from: k - to - 1, to: k });
+    }
+  }
+  return { board: next, falls: falls };
+}
+
+/* Clears lines until there are none, one wave at a time. */
+function resolve(board, rand, colours) {
+  var waves = [];
+  var lines = findLines(board);
+  while (lines.length > 0) {
+    var cleared = findMatches(board);
+    var fallen = collapse(board, cleared, rand, colours);
+    waves.push({ lines: lines, cleared: cleared, board: fallen.board, falls: fallen.falls });
+    board = fallen.board;
+    lines = findLines(board);
+  }
+  return waves;
+}
+
+function lineBonus(line) {
+  if (line.length >= 5) return BONUS[5];
+  if (line.length === 4) return BONUS[4];
+  return 0;
+}
+
+/* number counts the waves from 1. */
+function waveScore(wave, number) {
+  var bonus = wave.lines.reduce(function (sum, line) { return sum + lineBonus(line); }, 0);
+  return (wave.cleared.length * POINTS + bonus) * number;
+}
+
+/* The best is kept per target and number of colours, under this key. */
+function bestKey(target, colours) {
+  return target + '/' + colours;
+}
+
+function isBestKey(key) {
+  return TARGETS.some(function (target) {
+    return COLOURS.some(function (colours) { return bestKey(target, colours) === key; });
+  });
+}
+
+/* progress holds the fewest moves for each target and number of colours, and
+ * the target and colours last picked. */
+function serialize(progress) {
+  return JSON.stringify({ version: 3, best: progress.best, target: progress.target, colours: progress.colours });
+}
+
+function deserialize(text) {
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+  if (!data || data.version !== 3) return null;
+  if (!data.best || typeof data.best !== 'object' || Array.isArray(data.best)) return null;
+  var bestOk = Object.keys(data.best).every(function (key) {
+    return isBestKey(key) && Number.isInteger(data.best[key]) && data.best[key] > 0;
+  });
+  if (!bestOk) return null;
+  if (TARGETS.indexOf(data.target) < 0 || COLOURS.indexOf(data.colours) < 0) return null;
+  return { best: data.best, target: data.target, colours: data.colours };
+}
+
+/* ------------------------------------------------------------------ *
+ * UI
+ * ------------------------------------------------------------------ */
+
+function init() {
+  var boardEl = document.getElementById('board');
+  var overlayEl = document.getElementById('overlay');
+  var titleEl = document.getElementById('ov-title');
+  var textEl = document.getElementById('ov-text');
+  var goBtn = document.getElementById('ov-go');
+  var bestEl = document.getElementById('ov-best');
+  var targetsEl = document.getElementById('targets');
+  var coloursEl = document.getElementById('colours');
+  var metaEl = document.getElementById('meta');
+  var hintBtn = document.getElementById('hintbtn');
+
+  var SWAP_MS = 170;
+  var CLEAR_MS = 210;
+  var FALL_MS = 270;
+  var SHUFFLE_MS = 450;
+
+  var rand = rng(Math.floor(Math.random() * 4294967296));
+  var progress = load() || { best: {}, target: TARGETS[2], colours: 6 };
+  var board = [];
+  /* The gem element on each cell, in step with board. */
+  var els = [];
+  var moves = 0;
+  var score = 0;
+  /* Whether a game is under way; not while the popup is up. */
+  var playing = false;
+  var busy = false;
+  var selected = null;
+  var press = null;
+  /* The two cells of the move on show after Hint, until the next swap. */
+  var hinted = [];
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, serialize(progress));
+    } catch (e) {
+      /* private mode / quota: the game still works, it just forgets. */
+    }
+  }
+
+  function load() {
+    try {
+      return deserialize(localStorage.getItem(STORAGE_KEY));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function wait(ms) {
+    return new Promise(function (done) { setTimeout(done, ms); });
+  }
+
+  function place(el, row, col) {
+    el.style.transform = 'translate(' + col * 100 + '%, ' + row * 100 + '%)';
+  }
+
+  function makeGem(colour, row, col) {
+    var el = document.createElement('div');
+    el.className = 'gem c' + colour;
+    el.appendChild(document.createElement('span'));
+    place(el, row, col);
+    boardEl.appendChild(el);
+    return el;
+  }
+
+  /* Rebuilds every gem from board, popping them in. */
+  function render() {
+    boardEl.textContent = '';
+    els = board.map(function (colour, i) {
+      var el = makeGem(colour, Math.floor(i / SIZE), i % SIZE);
+      el.classList.add('new');
+      return el;
+    });
+  }
+
+  function showMeta() {
+    metaEl.textContent = 'Moves ' + moves + '\n' + score + ' / ' + progress.target;
+  }
+
+  function select(i) {
+    if (selected !== null) els[selected].classList.remove('sel');
+    selected = i;
+    if (i !== null) els[i].classList.add('sel');
+  }
+
+  function showHint() {
+    if (busy || !playing) return;
+    clearHint();
+    var moves = findMoves(board);
+    hinted = moves[Math.floor(rand() * moves.length)];
+    hinted.forEach(function (i) { els[i].classList.add('hint'); });
+  }
+
+  function clearHint() {
+    hinted.forEach(function (i) { els[i].classList.remove('hint'); });
+    hinted = [];
+  }
+
+  /* Swaps the elements on a and b, as the board would be after swap(). */
+  async function swapEls(a, b) {
+    [a, b].forEach(function (i) { els[i].classList.add('swap'); });
+    var t = els[a];
+    els[a] = els[b];
+    els[b] = t;
+    place(els[a], Math.floor(a / SIZE), a % SIZE);
+    place(els[b], Math.floor(b / SIZE), b % SIZE);
+    await wait(SWAP_MS);
+    [a, b].forEach(function (i) { els[i].classList.remove('swap'); });
+  }
+
+  async function playWave(wave, number) {
+    wave.cleared.forEach(function (i) { els[i].classList.add('gone'); });
+    score += waveScore(wave, number);
+    showMeta();
+    await wait(CLEAR_MS);
+    wave.cleared.forEach(function (i) { els[i].remove(); });
+    var next = els.slice();
+    var moving = wave.falls.map(function (fall) {
+      var to = fall.to * SIZE + fall.col;
+      var el;
+      if (fall.from < 0) {
+        el = makeGem(wave.board[to], fall.from, fall.col);
+      } else {
+        el = els[fall.from * SIZE + fall.col];
+      }
+      next[to] = el;
+      return { el: el, fall: fall };
+    });
+    els = next;
+    board = wave.board;
+    /* Let the new gems be laid out above the board before they drop. */
+    void boardEl.offsetHeight;
+    moving.forEach(function (m) { place(m.el, m.fall.to, m.fall.col); });
+    await wait(FALL_MS);
+  }
+
+  /* Shrinks the old gems away, then grows the reshuffled board in. */
+  async function shuffle() {
+    boardEl.classList.add('shuffling');
+    els.forEach(function (el) { el.classList.add('gone'); });
+    await wait(SHUFFLE_MS);
+    board = reshuffle(board, rand, progress.colours);
+    render();
+    await wait(SHUFFLE_MS);
+    boardEl.classList.remove('shuffling');
+  }
+
+  async function attempt(a, b) {
+    busy = true;
+    select(null);
+    clearHint();
+    var next = swap(board, a, b);
+    await swapEls(a, b);
+    if (findMatches(next).length === 0) {
+      await swapEls(a, b);
+      busy = false;
+      return;
+    }
+    board = next;
+    moves++;
+    showMeta();
+    var waves = resolve(board, rand, progress.colours);
+    for (var k = 0; k < waves.length; k++) {
+      await playWave(waves[k], k + 1);
+    }
+    if (score >= progress.target) {
+      finish();
+      return;
+    }
+    if (!hasMove(board)) await shuffle();
+    busy = false;
+  }
+
+  function finish() {
+    playing = false;
+    var key = bestKey(progress.target, progress.colours);
+    var before = progress.best[key];
+    var text = 'You reached ' + progress.target + ' points in ' + moves + ' moves.';
+    if (before === undefined || moves < before) {
+      if (before !== undefined) text += ' New best!';
+      progress.best[key] = moves;
+      save();
+    }
+    overlay('Target reached', text, 'Play again');
+  }
+
+  function newGame() {
+    board = newBoard(rand, progress.colours);
+    moves = 0;
+    score = 0;
+    selected = null;
+    hinted = [];
+    render();
+    showMeta();
+  }
+
+  function overlay(title, text, button) {
+    titleEl.textContent = title;
+    textEl.textContent = text;
+    goBtn.textContent = button;
+    showChoices();
+    overlayEl.hidden = false;
+    goBtn.focus();
+  }
+
+  function makeChips(el, values, pick) {
+    values.forEach(function (value) {
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip';
+      chip.textContent = value;
+      chip.dataset.value = value;
+      chip.addEventListener('click', function () {
+        pick(value);
+        save();
+        showChoices();
+      });
+      el.appendChild(chip);
+    });
+  }
+
+  function showChoices() {
+    [[targetsEl, progress.target], [coloursEl, progress.colours]].forEach(function (row) {
+      Array.prototype.forEach.call(row[0].children, function (chip) {
+        chip.setAttribute('aria-pressed', String(Number(chip.dataset.value) === row[1]));
+      });
+    });
+    var best = progress.best[bestKey(progress.target, progress.colours)];
+    if (best === undefined) {
+      bestEl.textContent = 'No best yet';
+    } else {
+      bestEl.textContent = 'Best: ' + best + ' moves';
+    }
+  }
+
+  function cellAt(ev) {
+    var rect = boardEl.getBoundingClientRect();
+    var col = Math.floor((ev.clientX - rect.left) / rect.width * SIZE);
+    var row = Math.floor((ev.clientY - rect.top) / rect.height * SIZE);
+    if (col < 0 || row < 0 || col >= SIZE || row >= SIZE) return null;
+    return row * SIZE + col;
+  }
+
+  /* Press a gem and swipe to swap it with a neighbour, or tap one gem and
+   * then a neighbour. */
+  boardEl.addEventListener('pointerdown', function (ev) {
+    if (busy || !playing) return;
+    var i = cellAt(ev);
+    if (i === null) return;
+    press = { cell: i, x: ev.clientX, y: ev.clientY };
+    boardEl.setPointerCapture(ev.pointerId);
+  });
+
+  boardEl.addEventListener('pointermove', function (ev) {
+    if (press === null) return;
+    var dx = ev.clientX - press.x;
+    var dy = ev.clientY - press.y;
+    var reach = boardEl.getBoundingClientRect().width / SIZE / 3;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < reach) return;
+    var from = press.cell;
+    press = null;
+    var to;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      if (dx > 0) {
+        to = from + 1;
+      } else {
+        to = from - 1;
+      }
+    } else if (dy > 0) {
+      to = from + SIZE;
+    } else {
+      to = from - SIZE;
+    }
+    if (to < 0 || to >= SIZE * SIZE || !isAdjacent(from, to)) return;
+    attempt(from, to);
+  });
+
+  boardEl.addEventListener('pointerup', function () {
+    if (press === null) return;
+    var i = press.cell;
+    press = null;
+    if (selected === null) {
+      select(i);
+    } else if (selected === i) {
+      select(null);
+    } else if (isAdjacent(selected, i)) {
+      attempt(selected, i);
+    } else {
+      select(i);
+    }
+  });
+
+  boardEl.addEventListener('pointercancel', function () {
+    press = null;
+  });
+
+  hintBtn.addEventListener('click', showHint);
+
+  goBtn.addEventListener('click', function () {
+    overlayEl.hidden = true;
+    newGame();
+    busy = false;
+    playing = true;
+  });
+
+  makeChips(targetsEl, TARGETS, function (target) { progress.target = target; });
+  makeChips(coloursEl, COLOURS, function (colours) { progress.colours = colours; });
+  newGame();
+  overlay('Gems', 'Swap neighbouring gems to make lines of three or more. Longer lines and chain reactions score extra. Reach the target in as few moves as you can.', 'Play');
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('../sw.js').catch(function () {
+        /* file:// or no HTTPS: the app runs fine, it just is not installable. */
+      });
+    });
+  }
+}
+
+if (typeof document !== 'undefined') init();
+</script>
+</body>
+</html>
