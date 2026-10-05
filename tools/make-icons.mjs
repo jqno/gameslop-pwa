@@ -1,6 +1,7 @@
 /* Draws the app icons: two dice for the launcher, a small Suguru board for
  * Suguru, a crowd heading into a gate for Crowd Run, and a row of matched gems
- * for Gems, and a board with a full row and a piece being dropped for Blocks.
+ * for Gems, a board with a full row and a piece being dropped for Blocks, and a
+ * cluster of bubbles with one flying up to it for Bubbles.
  * Each icon is a scene over the unit square, supersampled for smooth
  * edges. Everything sits inside the maskable safe zone (radius 0.4). */
 import { deflateSync } from 'node:zlib';
@@ -281,7 +282,34 @@ function blocks() {
   };
 }
 
-const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks]];
+/* --- bubbles: a cluster at the top, and one on its way up to it -------- */
+
+function bubbles() {
+  const radius = 0.065;
+  const gap = 0.14;
+  const ball = (cx, cy, colour) => ({ cx, cy, colour });
+  const cluster = [
+    ...[BLUE, BLUE, ORANGE, PURPLE].map((colour, i) => ball(0.5 + (i - 1.5) * gap, 0.32, colour)),
+    ...[PURPLE, ORANGE, BLUE].map((colour, i) => ball(0.5 + (i - 1) * gap, 0.32 + gap * Math.sqrt(3) / 2, colour))
+  ];
+  const shot = ball(0.5, 0.74, ORANGE);
+  const trail = [0.66, 0.6, 0.54];
+  return (x, y) => {
+    for (const b of [...cluster, shot]) {
+      const dx = x - b.cx;
+      const dy = y - b.cy;
+      if (Math.hypot(dx, dy) <= radius) {
+        /* The upper left catches the light. */
+        if (Math.hypot(dx + radius * 0.35, dy + radius * 0.35) <= radius * 0.4) return mix(b.colour, PAPER, 0.45);
+        return b.colour;
+      }
+    }
+    if (trail.some((ty) => Math.hypot(x - 0.5, y - ty) <= 0.014)) return mix(BG, ORANGE, 0.6);
+    return BG;
+  };
+}
+
+const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles]];
 for (const [dir, scene] of ICONS) {
   for (const size of [192, 512]) {
     const name = `${dir}icon-${size}.png`;

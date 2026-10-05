@@ -1,11 +1,12 @@
 /* Cache-first over the whole app, every game included; bump CACHE to ship an update. */
-const CACHE = 'gameslop-v4';
+const CACHE = 'gameslop-v5';
 const FILES = [
   '.', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png',
   'suguru/', 'suguru/index.html', 'suguru/icon-192.png', 'suguru/icon-512.png',
   'crowd/', 'crowd/index.html', 'crowd/icon-192.png', 'crowd/icon-512.png',
   'gems/', 'gems/index.html', 'gems/icon-192.png', 'gems/icon-512.png',
   'blocks/', 'blocks/index.html', 'blocks/icon-192.png', 'blocks/icon-512.png',
+  'bubbles/', 'bubbles/index.html', 'bubbles/icon-192.png', 'bubbles/icon-512.png',
 ];
 
 self.addEventListener('install', (event) => {

@@ -1,0 +1,877 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bubbles</title>
+<meta name="description" content="Shoot bubbles to pop groups of three or more.">
+<meta name="theme-color" content="#0f1420">
+<link rel="manifest" href="../manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gameslop">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root {
+  color-scheme: light dark;
+  --width: min(100%, 520px);
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --ink: #1b2130;
+  --muted: #6b7382;
+  --btn: #ffffff;
+  --btnline: #ccd2dd;
+  --sel: #cfe0ff;
+  --accent: #2358c8;
+  --board: #e3e7ee;
+  --cell: #d6dbe5;
+  --g0: #e0454f;
+  --g1: #f08c1c;
+  --g2: #e2bb12;
+  --g3: #2fae5a;
+  --g4: #2f7de0;
+  --g5: #8a4fd6;
+  --g6: #e04ba6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1420;
+    --panel: #161c2b;
+    --ink: #e7ebf3;
+    --muted: #8b95a8;
+    --btn: #1c2334;
+    --btnline: #313a50;
+    --sel: #2b456f;
+    --accent: #79a8ff;
+    --board: #161c2b;
+    --cell: #1c2334;
+    --g0: #ff6b6b;
+    --g1: #ffa94d;
+    --g2: #ffd84a;
+    --g3: #4fd17a;
+    --g4: #5c9cff;
+    --g5: #b98cff;
+    --g6: #ff7ac8;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+header {
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+h1 { flex: 1; font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercase; }
+.meta { font-size: 14px; line-height: 1.25; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; white-space: pre; }
+a.key, button.key {
+  font: inherit;
+  background: var(--btn);
+  color: var(--ink);
+  border: 1px solid var(--btnline);
+  border-radius: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+a.key { display: flex; align-items: center; justify-content: center; padding: 0 14px; font-size: 22px; text-decoration: none; }
+button.key { padding: 10px 26px; font-size: 16px; font-weight: 600; }
+button.key.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.key:active { background: var(--sel); }
+/* The stage takes whatever height is left; the script sizes the board to the
+ * largest it can be inside it. */
+.stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.board {
+  display: block;
+  border-radius: 14px;
+  background: var(--board);
+  touch-action: none;
+}
+/* The popup covers the whole page: with the choices in it, it is taller than
+ * the board on a phone. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+  background: rgba(8, 12, 22, .45);
+}
+.overlay[hidden] { display: none; }
+.overlay > div {
+  width: min(100%, 340px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 26px 20px;
+  text-align: center;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 18px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .35);
+  animation: pop .3s ease-out;
+}
+.overlay strong { font-size: 28px; line-height: 1.1; color: var(--accent); }
+.overlay p { margin: 0; color: var(--muted); }
+.overlay h2 {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.overlay h2 small { font-weight: 400; letter-spacing: 0; text-transform: none; }
+.chips { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+#modes { grid-template-columns: repeat(2, 1fr); }
+.chip {
+  font: inherit;
+  font-size: 14px;
+  min-height: 38px;
+  padding: 0;
+  border: 1px solid var(--btnline);
+  border-radius: 8px;
+  background: var(--btn);
+  color: var(--ink);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.overlay p#ov-best { color: var(--ink); font-weight: 600; }
+@keyframes pop {
+  from { opacity: 0; transform: scale(.85); }
+  to { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <a class="key" href="../" aria-label="Main menu">←</a>
+  <h1>Bubbles</h1>
+  <span class="meta" id="meta"></span>
+</header>
+<div class="stage" id="stage">
+  <canvas class="board" id="board"></canvas>
+</div>
+<div class="overlay" id="overlay">
+  <div>
+    <strong id="ov-title"></strong>
+    <p id="ov-text"></p>
+    <h2>Mode</h2>
+    <div class="chips" id="modes"></div>
+    <h2>Colours <small>fewer is easier</small></h2>
+    <div class="chips" id="colours"></div>
+    <p id="ov-best"></p>
+    <button class="key primary" id="ov-go" type="button">Play</button>
+  </div>
+</div>
+<script id="app">
+'use strict';
+
+/* ------------------------------------------------------------------ *
+ * Rules
+ * ------------------------------------------------------------------ */
+
+/* Bubbles sit on a hex grid of ROWS rows of COLS cells, each null or a colour
+ * from 0 up to the number in play. Every other row is pushed half a bubble to
+ * the right; board.shift says which. Rows above board.top are behind the
+ * ceiling. A bubble left in the last row loses the game.
+ *
+ * Distances are in bubble widths: a bubble is 1 across, rows are H apart. */
+var COLS = 8;
+var ROWS = 14;
+var H = Math.sqrt(3) / 2;
+var WIDTH = COLS + 0.5;
+var SHOOTER = { x: WIDTH / 2, y: ROWS * H + 1.2 };
+var VIEW = SHOOTER.y + 0.9;
+var COLOURS = [4, 5, 6, 7];
+var MODES = ['endless', 'puzzle'];
+var START_ROWS = { endless: 5, puzzle: 8 };
+/* Endless: a new row pushes in after this many shots that pop nothing.
+ * Puzzle: the ceiling drops a row after this many shots. */
+var MISSES = 5;
+var SHOTS = 8;
+/* How likely a new board copies a neighbour's colour, so it has groups to pop. */
+var CLUMP = 0.5;
+var POINTS = 10;
+var DROP = 20;
+/* A shot stops this close to a bubble, a little under touching, so it can
+ * slip through a gap that looks wide enough. It moves STEP at a time. */
+var REACH = 0.85;
+var STEP = 0.05;
+var STORAGE_KEY = 'bubbles.v1';
+
+function rng(seed) {
+  var a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    var t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function emptyRow() {
+  var row = [];
+  for (var c = 0; c < COLS; c++) row.push(null);
+  return row;
+}
+
+function copy(board) {
+  return { cells: board.cells.map(function (row) { return row.slice(); }), shift: board.shift, top: board.top };
+}
+
+function isShifted(board, r) {
+  return (r + board.shift) % 2 === 1;
+}
+
+function centre(board, r, c) {
+  var x = c + 0.5;
+  if (isShifted(board, r)) x += 0.5;
+  return { x: x, y: r * H + 0.5 };
+}
+
+function inside(board, r, c) {
+  return r >= board.top && r < ROWS && c >= 0 && c < COLS;
+}
+
+/* The cells touching r, c, as [row, col] pairs. */
+function neighbours(board, r, c) {
+  var d = -1;
+  if (isShifted(board, r)) d = 0;
+  return [[r, c - 1], [r, c + 1], [r - 1, c + d], [r - 1, c + d + 1], [r + 1, c + d], [r + 1, c + d + 1]]
+    .filter(function (cell) { return inside(board, cell[0], cell[1]); });
+}
+
+function occupied(board) {
+  var cells = [];
+  board.cells.forEach(function (row, r) {
+    row.forEach(function (colour, c) {
+      if (colour !== null) cells.push([r, c]);
+    });
+  });
+  return cells;
+}
+
+/* Every cell reachable from starts through cells that pass accept. */
+function flood(board, starts, accept) {
+  var seen = {};
+  var todo = starts.slice();
+  var found = [];
+  while (todo.length > 0) {
+    var cell = todo.pop();
+    var key = cell[0] * COLS + cell[1];
+    if (seen[key]) continue;
+    seen[key] = true;
+    found.push(cell);
+    neighbours(board, cell[0], cell[1]).forEach(function (next) {
+      if (accept(next)) todo.push(next);
+    });
+  }
+  return found;
+}
+
+/* The bubble at r, c and every bubble of its colour joined to it. */
+function cluster(board, r, c) {
+  var colour = board.cells[r][c];
+  return flood(board, [[r, c]], function (cell) { return board.cells[cell[0]][cell[1]] === colour; });
+}
+
+/* The bubbles no longer hanging from the ceiling. */
+function floating(board) {
+  var hanging = occupied(board).filter(function (cell) { return cell[0] === board.top; });
+  var held = {};
+  flood(board, hanging, function (cell) { return board.cells[cell[0]][cell[1]] !== null; })
+    .forEach(function (cell) { held[cell[0] * COLS + cell[1]] = true; });
+  return occupied(board).filter(function (cell) { return !held[cell[0] * COLS + cell[1]]; });
+}
+
+function clear(board, cells) {
+  var next = copy(board);
+  cells.forEach(function (cell) { next.cells[cell[0]][cell[1]] = null; });
+  return next;
+}
+
+/* Puts a bubble on cell. A group of three or more of its colour pops, and
+ * whatever that cuts loose drops. */
+function place(board, cell, colour) {
+  var next = copy(board);
+  next.cells[cell[0]][cell[1]] = colour;
+  var group = cluster(next, cell[0], cell[1]);
+  if (group.length < 3) return { board: next, popped: [], dropped: [] };
+  next = clear(next, group);
+  var dropped = floating(next);
+  return { board: clear(next, dropped), popped: group, dropped: dropped };
+}
+
+/* The empty cell nearest x, y that a bubble could stick to there. */
+function snap(board, x, y) {
+  var best = null;
+  var bestDist = Infinity;
+  for (var r = board.top; r < ROWS; r++) {
+    for (var c = 0; c < COLS; c++) {
+      if (board.cells[r][c] !== null) continue;
+      var sticks = r === board.top || neighbours(board, r, c).some(function (cell) {
+        return board.cells[cell[0]][cell[1]] !== null;
+      });
+      if (!sticks) continue;
+      var p = centre(board, r, c);
+      var dist = Math.hypot(p.x - x, p.y - y);
+      if (dist < bestDist) {
+        best = [r, c];
+        bestDist = dist;
+      }
+    }
+  }
+  return best;
+}
+
+/* Where a shot at angle (radians from the right, up is positive) goes: the
+ * points it passes, bouncing off the sides, and the cell it ends up in. */
+function trace(board, angle) {
+  var dx = Math.cos(angle);
+  var dy = -Math.sin(angle);
+  var x = SHOOTER.x;
+  var y = SHOOTER.y;
+  var path = [{ x: x, y: y }];
+  var bubbles = occupied(board).map(function (cell) { return centre(board, cell[0], cell[1]); });
+  for (;;) {
+    x += dx * STEP;
+    y += dy * STEP;
+    if (x < 0.5) {
+      x = 1 - x;
+      dx = -dx;
+      path.push({ x: x, y: y });
+    } else if (x > WIDTH - 0.5) {
+      x = 2 * (WIDTH - 0.5) - x;
+      dx = -dx;
+      path.push({ x: x, y: y });
+    }
+    if (y - 0.5 <= board.top * H) break;
+    var hit = bubbles.some(function (p) { return Math.hypot(p.x - x, p.y - y) < REACH; });
+    if (hit) break;
+  }
+  var cell = snap(board, x, y);
+  if (cell !== null) path.push(centre(board, cell[0], cell[1]));
+  return { path: path, cell: cell };
+}
+
+/* Puts row in at the ceiling and moves everything below it down a row. */
+function insertRow(board, row) {
+  var next = copy(board);
+  next.cells.splice(board.top, 0, row);
+  next.cells.pop();
+  next.shift = 1 - board.shift;
+  return next;
+}
+
+function pushRow(board, rand, colours) {
+  var row = emptyRow().map(function () { return Math.floor(rand() * colours); });
+  return insertRow(board, row);
+}
+
+function lowerCeiling(board) {
+  var next = insertRow(board, emptyRow());
+  next.top = board.top + 1;
+  return next;
+}
+
+function newBoard(rand, colours, mode) {
+  var board = { cells: [], shift: 0, top: 0 };
+  for (var r = 0; r < ROWS; r++) board.cells.push(emptyRow());
+  for (r = 0; r < START_ROWS[mode]; r++) {
+    for (var c = 0; c < COLS; c++) {
+      var colour = Math.floor(rand() * colours);
+      var near = neighbours(board, r, c).filter(function (cell) { return board.cells[cell[0]][cell[1]] !== null; });
+      if (near.length > 0 && rand() < CLUMP) {
+        var pick = near[Math.floor(rand() * near.length)];
+        colour = board.cells[pick[0]][pick[1]];
+      }
+      board.cells[r][c] = colour;
+    }
+  }
+  return board;
+}
+
+/* The colours still on the board, each once, in order. */
+function coloursOn(board) {
+  var present = [];
+  occupied(board).forEach(function (cell) {
+    var colour = board.cells[cell[0]][cell[1]];
+    if (present.indexOf(colour) < 0) present.push(colour);
+  });
+  return present.sort();
+}
+
+/* A colour to shoot: one still on the board, so no shot is wasted. */
+function nextColour(board, rand, colours) {
+  var present = coloursOn(board);
+  if (present.length === 0) return Math.floor(rand() * colours);
+  return present[Math.floor(rand() * present.length)];
+}
+
+function isLost(board) {
+  return board.cells[ROWS - 1].some(function (colour) { return colour !== null; });
+}
+
+function isCleared(board) {
+  return occupied(board).length === 0;
+}
+
+function scoreFor(popped, dropped) {
+  return popped.length * POINTS + dropped.length * DROP;
+}
+
+/* The best is kept per mode and number of colours, under this key: the
+ * highest score in Endless, the fewest shots in Puzzle. */
+function bestKey(mode, colours) {
+  return mode + '/' + colours;
+}
+
+function isBestKey(key) {
+  return MODES.some(function (mode) {
+    return COLOURS.some(function (colours) { return bestKey(mode, colours) === key; });
+  });
+}
+
+/* progress holds the bests, and the mode and colours last picked. */
+function serialize(progress) {
+  return JSON.stringify({ version: 1, best: progress.best, mode: progress.mode, colours: progress.colours });
+}
+
+function deserialize(text) {
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+  if (!data || data.version !== 1) return null;
+  if (!data.best || typeof data.best !== 'object' || Array.isArray(data.best)) return null;
+  var bestOk = Object.keys(data.best).every(function (key) {
+    return isBestKey(key) && Number.isInteger(data.best[key]) && data.best[key] > 0;
+  });
+  if (!bestOk) return null;
+  if (MODES.indexOf(data.mode) < 0 || COLOURS.indexOf(data.colours) < 0) return null;
+  return { best: data.best, mode: data.mode, colours: data.colours };
+}
+
+/* ------------------------------------------------------------------ *
+ * UI
+ * ------------------------------------------------------------------ */
+
+function init() {
+  var stageEl = document.getElementById('stage');
+  var canvas = document.getElementById('board');
+  var ctx = canvas.getContext('2d');
+  var overlayEl = document.getElementById('overlay');
+  var titleEl = document.getElementById('ov-title');
+  var textEl = document.getElementById('ov-text');
+  var goBtn = document.getElementById('ov-go');
+  var bestEl = document.getElementById('ov-best');
+  var modesEl = document.getElementById('modes');
+  var coloursEl = document.getElementById('colours');
+  var metaEl = document.getElementById('meta');
+
+  /* Shots fly SPEED bubble widths per millisecond. */
+  var SPEED = 0.03;
+  var POP_MS = 220;
+  var FALL_MS = 700;
+  /* Aim no flatter than this, in radians, or a shot takes forever to rise. */
+  var MIN_ANGLE = 0.15;
+  /* The bubble after this one waits here; tap it to swap the two. */
+  var NEXT = { x: SHOOTER.x - 1.6, y: SHOOTER.y + 0.2, r: 0.35 };
+  var NAMES = { endless: 'Endless', puzzle: 'Puzzle' };
+
+  var rand = rng(Math.floor(Math.random() * 4294967296));
+  var progress = load() || { best: {}, mode: 'endless', colours: 5 };
+  var board = null;
+  /* The bubble to shoot and the one after it. */
+  var queue = [];
+  var score = 0;
+  var shots = 0;
+  var misses = 0;
+  /* Whether a game is under way; not while the popup is up. */
+  var playing = false;
+  var press = null;
+  /* The trace for the shot being aimed, and the shot in the air. */
+  var aim = null;
+  var flight = null;
+  /* Popping and dropping bubbles, drawn until they are done. */
+  var effects = [];
+  var scale = 1;
+  var colours = {};
+  var frame = 0;
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, serialize(progress));
+    } catch (e) {
+      /* private mode / quota: the game still works, it just forgets. */
+    }
+  }
+
+  function load() {
+    try {
+      return deserialize(localStorage.getItem(STORAGE_KEY));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function readColours() {
+    var style = getComputedStyle(document.documentElement);
+    var get = function (name) { return style.getPropertyValue(name).trim(); };
+    colours = { bubbles: [0, 1, 2, 3, 4, 5, 6].map(function (i) { return get('--g' + i); }), wall: get('--cell'), line: get('--muted') };
+  }
+
+  function resize() {
+    var rect = stageEl.getBoundingClientRect();
+    scale = Math.min(rect.width / WIDTH, rect.height / VIEW);
+    var dpr = window.devicePixelRatio || 1;
+    canvas.style.width = WIDTH * scale + 'px';
+    canvas.style.height = VIEW * scale + 'px';
+    canvas.width = Math.round(WIDTH * scale * dpr);
+    canvas.height = Math.round(VIEW * scale * dpr);
+    draw(performance.now());
+  }
+
+  function bubble(x, y, colour, radius, alpha) {
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = colours.bubbles[colour];
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, 2 * Math.PI);
+    ctx.fill();
+    var shine = ctx.createRadialGradient(x - radius * 0.3, y - radius * 0.4, 0, x - radius * 0.3, y - radius * 0.4, radius * 0.9);
+    shine.addColorStop(0, 'rgba(255, 255, 255, .55)');
+    shine.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = shine;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  /* Where along path a shot is after travelling dist. */
+  function along(path, dist) {
+    for (var k = 1; k < path.length; k++) {
+      var a = path[k - 1];
+      var b = path[k];
+      var length = Math.hypot(b.x - a.x, b.y - a.y);
+      if (dist <= length) {
+        return { x: a.x + (b.x - a.x) * dist / length, y: a.y + (b.y - a.y) * dist / length, done: false };
+      }
+      dist -= length;
+    }
+    return { x: path[path.length - 1].x, y: path[path.length - 1].y, done: true };
+  }
+
+  function draw(now) {
+    var dpr = canvas.width / (WIDTH * scale);
+    ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+    ctx.clearRect(0, 0, WIDTH, VIEW);
+    if (board === null) return;
+    if (board.top > 0) {
+      ctx.fillStyle = colours.wall;
+      ctx.fillRect(0, 0, WIDTH, board.top * H);
+    }
+    ctx.strokeStyle = colours.line;
+    ctx.lineWidth = 0.04;
+    ctx.setLineDash([0.15, 0.15]);
+    ctx.beginPath();
+    ctx.moveTo(0, (ROWS - 1) * H);
+    ctx.lineTo(WIDTH, (ROWS - 1) * H);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    occupied(board).forEach(function (cell) {
+      var p = centre(board, cell[0], cell[1]);
+      bubble(p.x, p.y, board.cells[cell[0]][cell[1]], 0.47, 1);
+    });
+    if (aim !== null) {
+      var end = along(aim.path, Infinity);
+      for (var d = 0.6; ; d += 0.4) {
+        var dot = along(aim.path, d);
+        if (dot.done) break;
+        bubble(dot.x, dot.y, queue[0], 0.08, 0.8);
+      }
+      bubble(end.x, end.y, queue[0], 0.47, 0.3);
+    }
+    effects.forEach(function (e) {
+      var t = (now - e.start) / e.ms;
+      if (e.kind === 'pop') {
+        bubble(e.x, e.y, e.colour, 0.47 * (1 + t * 0.5), 1 - t);
+      } else {
+        bubble(e.x, e.y + 12 * t * t, e.colour, 0.47, 1 - t);
+      }
+    });
+    if (flight !== null) {
+      var at = along(flight.path, (now - flight.start) * SPEED);
+      bubble(at.x, at.y, flight.colour, 0.47, 1);
+    } else {
+      bubble(SHOOTER.x, SHOOTER.y, queue[0], 0.47, 1);
+    }
+    bubble(NEXT.x, NEXT.y, queue[1], NEXT.r, 1);
+  }
+
+  function tick(now) {
+    frame = 0;
+    effects = effects.filter(function (e) { return now - e.start < e.ms; });
+    if (flight !== null && along(flight.path, (now - flight.start) * SPEED).done) land(now);
+    draw(now);
+    if (flight !== null || effects.length > 0) frame = requestAnimationFrame(tick);
+  }
+
+  function animate() {
+    if (frame === 0) frame = requestAnimationFrame(tick);
+  }
+
+  function showMeta() {
+    if (progress.mode === 'endless') {
+      metaEl.textContent = 'Score ' + score + '\nNew row in ' + (MISSES - misses);
+    } else {
+      metaEl.textContent = 'Shots ' + shots + '\nDrop in ' + (SHOTS - shots % SHOTS);
+    }
+  }
+
+  function shoot(shot) {
+    if (shot.cell === null) return;
+    flight = { path: shot.path, cell: shot.cell, colour: queue[0], start: performance.now() };
+    animate();
+  }
+
+  function land(now) {
+    var before = board;
+    var colour = flight.colour;
+    var result = place(board, flight.cell, colour);
+    flight = null;
+    board = result.board;
+    result.popped.forEach(function (cell) {
+      var p = centre(before, cell[0], cell[1]);
+      effects.push({ kind: 'pop', x: p.x, y: p.y, colour: colour, start: now, ms: POP_MS });
+    });
+    result.dropped.forEach(function (cell) {
+      var p = centre(before, cell[0], cell[1]);
+      effects.push({ kind: 'fall', x: p.x, y: p.y, colour: before.cells[cell[0]][cell[1]], start: now, ms: FALL_MS });
+    });
+    shots++;
+    if (result.popped.length > 0) {
+      score += scoreFor(result.popped, result.dropped);
+    } else {
+      misses++;
+    }
+    if (isCleared(board) && progress.mode === 'puzzle') {
+      finish(true);
+      return;
+    }
+    if (!isLost(board)) {
+      if (progress.mode === 'endless' && (misses >= MISSES || isCleared(board))) {
+        misses = 0;
+        board = pushRow(board, rand, progress.colours);
+      }
+      if (progress.mode === 'puzzle' && shots % SHOTS === 0) board = lowerCeiling(board);
+    }
+    if (isLost(board)) {
+      finish(false);
+      return;
+    }
+    var current = queue[1];
+    if (coloursOn(board).indexOf(current) < 0) current = nextColour(board, rand, progress.colours);
+    queue = [current, nextColour(board, rand, progress.colours)];
+    showMeta();
+  }
+
+  function finish(won) {
+    playing = false;
+    showMeta();
+    var key = bestKey(progress.mode, progress.colours);
+    var before = progress.best[key];
+    var text;
+    var better;
+    if (progress.mode === 'endless') {
+      text = 'You scored ' + score + ' points.';
+      better = score > 0 && (before === undefined || score > before);
+      if (better) progress.best[key] = score;
+    } else if (won) {
+      text = 'You cleared the board in ' + shots + ' shots.';
+      better = before === undefined || shots < before;
+      if (better) progress.best[key] = shots;
+    } else {
+      text = 'The bubbles reached the bottom.';
+      better = false;
+    }
+    if (better) {
+      if (before !== undefined) text += ' New best!';
+      save();
+    }
+    if (won) {
+      overlay('Cleared', text, 'Play again');
+    } else {
+      overlay('Game over', text, 'Play again');
+    }
+  }
+
+  function newGame() {
+    board = newBoard(rand, progress.colours, progress.mode);
+    queue = [nextColour(board, rand, progress.colours), nextColour(board, rand, progress.colours)];
+    score = 0;
+    shots = 0;
+    misses = 0;
+    aim = null;
+    flight = null;
+    effects = [];
+    showMeta();
+    draw(performance.now());
+  }
+
+  function overlay(title, text, button) {
+    titleEl.textContent = title;
+    textEl.textContent = text;
+    goBtn.textContent = button;
+    showChoices();
+    overlayEl.hidden = false;
+    goBtn.focus();
+  }
+
+  function makeChips(el, values, label, pick) {
+    values.forEach(function (value) {
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip';
+      chip.textContent = label(value);
+      chip.dataset.value = value;
+      chip.addEventListener('click', function () {
+        pick(value);
+        save();
+        showChoices();
+      });
+      el.appendChild(chip);
+    });
+  }
+
+  function showChoices() {
+    [[modesEl, progress.mode], [coloursEl, progress.colours]].forEach(function (row) {
+      Array.prototype.forEach.call(row[0].children, function (chip) {
+        chip.setAttribute('aria-pressed', String(chip.dataset.value === String(row[1])));
+      });
+    });
+    var best = progress.best[bestKey(progress.mode, progress.colours)];
+    if (best === undefined) {
+      bestEl.textContent = 'No best yet';
+    } else if (progress.mode === 'endless') {
+      bestEl.textContent = 'Best: ' + best + ' points';
+    } else {
+      bestEl.textContent = 'Best: ' + best + ' shots';
+    }
+  }
+
+  function point(ev) {
+    var rect = canvas.getBoundingClientRect();
+    return { x: (ev.clientX - rect.left) / scale, y: (ev.clientY - rect.top) / scale };
+  }
+
+  /* The trace towards p, or null when p is too low to aim at, which is how a
+   * shot is called off. */
+  function aimAt(p) {
+    if (p.y > SHOOTER.y - 0.6) return null;
+    var angle = Math.atan2(SHOOTER.y - p.y, p.x - SHOOTER.x);
+    angle = Math.min(Math.max(angle, MIN_ANGLE), Math.PI - MIN_ANGLE);
+    return trace(board, angle);
+  }
+
+  function nearNext(p) {
+    return Math.hypot(p.x - NEXT.x, p.y - NEXT.y) < NEXT.r + 0.3;
+  }
+
+  /* Drag to aim and let go to shoot; tap the waiting bubble to swap. */
+  canvas.addEventListener('pointerdown', function (ev) {
+    if (!playing || flight !== null) return;
+    var p = point(ev);
+    canvas.setPointerCapture(ev.pointerId);
+    if (nearNext(p)) {
+      press = 'swap';
+      return;
+    }
+    press = 'aim';
+    aim = aimAt(p);
+    draw(performance.now());
+  });
+
+  canvas.addEventListener('pointermove', function (ev) {
+    if (press !== 'aim') return;
+    aim = aimAt(point(ev));
+    draw(performance.now());
+  });
+
+  canvas.addEventListener('pointerup', function (ev) {
+    if (press === 'swap' && nearNext(point(ev))) {
+      queue = [queue[1], queue[0]];
+    }
+    if (press === 'aim' && aim !== null) shoot(aim);
+    press = null;
+    aim = null;
+    draw(performance.now());
+  });
+
+  canvas.addEventListener('pointercancel', function () {
+    press = null;
+    aim = null;
+    draw(performance.now());
+  });
+
+  goBtn.addEventListener('click', function () {
+    overlayEl.hidden = true;
+    newGame();
+    playing = true;
+  });
+
+  makeChips(modesEl, MODES, function (mode) { return NAMES[mode]; }, function (mode) { progress.mode = mode; });
+  makeChips(coloursEl, COLOURS, String, function (count) { progress.colours = count; });
+  readColours();
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+    readColours();
+    draw(performance.now());
+  });
+  new ResizeObserver(resize).observe(stageEl);
+  newGame();
+  overlay('Bubbles', 'Drag to aim and let go to shoot. Pop groups of three or more of a colour; whatever they held up falls too. Tap the small bubble to swap it in.', 'Play');
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('../sw.js').catch(function () {
+        /* file:// or no HTTPS: the app runs fine, it just is not installable. */
+      });
+    });
+  }
+}
+
+if (typeof document !== 'undefined') init();
+</script>
+</body>
+</html>
