@@ -15,7 +15,7 @@ const EXPORTS = [
   'bitsOf', 'buildLayout', 'partition', 'candidateMask', 'conflicts', 'searchSolutions',
   'nakedSubsets', 'pointing', 'nextPlacement', 'allPlacements', 'findFilledLayout', 'solveLogically', 'carve',
   'generate', 'applyDigit', 'serialize', 'deserialize', 'freshState', 'shuffle', 'range',
-  'SIZES', 'DEFAULT_SIZE', 'setGeometry', 'isOfferedSize'
+  'SIZES', 'DEFAULT_SIZE', 'setGeometry', 'isOfferedSize', 'formatTime', 'bestKey', 'deserializeBest'
 ];
 
 const body = [...LIVE.map((name) => `get ${name}() { return ${name}; }`), ...EXPORTS].join(', ');

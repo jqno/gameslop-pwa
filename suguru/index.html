@@ -153,9 +153,9 @@ h1 { font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercas
   gap: 8px;
 }
 .pad { grid-template-columns: repeat(6, 1fr); }
-/* Back leaves for the main menu; New and Restart throw the game away; Hint and
- * Undo help you play. The rules between them say which is which. */
-.actions { position: relative; grid-template-columns: auto auto 1fr 1fr auto 1fr 1fr; min-width: min-content; }
+/* Back leaves for the main menu; New and Restart throw the game away; Check,
+ * Hint and Undo help you play. The rules between them say which is which. */
+.actions { position: relative; grid-template-columns: auto auto 1fr 1fr auto 1fr 1fr 1fr; min-width: min-content; gap: 6px; }
 /* The New menu hangs below its button, which now sits near the top. */
 .menu {
   position: absolute;
@@ -196,6 +196,7 @@ h1 { font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercas
   font-variant-numeric: tabular-nums;
 }
 .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.menu p { margin: 0; font-size: 14px; font-weight: 600; text-align: center; }
 .menu .go { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
 button.key.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .sep { width: 1px; margin: 6px 3px; background: var(--btnline); border-radius: 1px; }
@@ -212,10 +213,10 @@ button.key, a.key {
 button.key:active { background: var(--sel); }
 button.key:disabled { opacity: .4; cursor: default; }
 .pad button.key { font-size: 22px; font-weight: 600; }
-.actions .key { font-size: 14px; padding-inline: 8px; }
+.actions .key { font-size: 14px; padding-inline: 4px; }
 /* A link, since it leaves the page; laid out like the buttons around it. */
 a.key { display: flex; align-items: center; justify-content: center; padding: 0 14px; text-decoration: none; }
-.actions a.key { font-size: 22px; }
+.actions a.key { font-size: 22px; padding-inline: 10px; }
 /* Short screens: tighten the gaps so the board keeps as much height as possible. */
 @media (max-height: 680px) {
   :root { --chrome: 260px; --gap: 8px; }
@@ -295,6 +296,7 @@ a.key { display: flex; align-items: center; justify-content: center; padding: 0 
   <button class="key" id="new" type="button" aria-haspopup="true" aria-expanded="false">New</button>
   <button class="key" id="restart" type="button">Restart</button>
   <span class="sep" aria-hidden="true"></span>
+  <button class="key" id="check" type="button">Check</button>
   <button class="key" id="hintbtn" type="button">Hint</button>
   <button class="key" id="undo" type="button">Undo</button>
   <div class="menu" id="menu" hidden>
@@ -302,6 +304,7 @@ a.key { display: flex; align-items: center; justify-content: center; padding: 0 
     <div class="chips" id="menu-diff"></div>
     <h2>Size <small>rows × columns</small></h2>
     <div class="chips" id="menu-size"></div>
+    <p id="menu-best"></p>
     <div class="go">
       <button class="key" id="menu-cancel" type="button">Cancel</button>
       <button class="key primary" id="menu-start" type="button">Start</button>
@@ -314,6 +317,8 @@ a.key { display: flex; align-items: center; justify-content: center; padding: 0 
     <div>
       <strong>Solved!</strong>
       <span>Nice one.</span>
+      <span id="time"></span>
+      <span id="best"></span>
       <button class="key" id="dismiss" type="button">Back to the board</button>
     </div>
   </div>
@@ -343,6 +348,7 @@ var MAXD = 5;
  * that note is red. Saved states from before red notes existed stay valid. */
 var NOTES_MAX = (1 << (MAXD * 2)) - 1;
 var STORAGE_KEY = 'suguru.v1';
+var BEST_STORAGE_KEY = 'suguru.best.v1';
 var UNDO_LIMIT = 200;
 
 var DIFFICULTIES = {
@@ -866,7 +872,7 @@ function serialize(puzzle, state) {
   return JSON.stringify({
     version: 1,
     puzzle: puzzle,
-    state: { values: state.values, notes: state.notes, selected: state.selected, undo: state.undo, hints: state.hints }
+    state: { values: state.values, notes: state.notes, selected: state.selected, undo: state.undo, hints: state.hints, elapsed: state.elapsed }
   });
 }
 
@@ -904,15 +910,57 @@ function deserialize(text) {
   /* Saves from before the hint counter have no hints. */
   var hints = s.hints === undefined ? [] : s.hints;
   if (!Array.isArray(hints) || !hints.every(function (h) { return typeof h === 'string'; })) return null;
+  /* Saves from before the timer start the clock now. */
+  var elapsed = s.elapsed === undefined ? 0 : s.elapsed;
+  if (!Number.isInteger(elapsed) || elapsed < 0) return null;
   var selected = Number.isInteger(s.selected) && s.selected >= 0 && s.selected < CELLS ? s.selected : null;
   return {
     puzzle: { rows: rows, cols: cols, regions: p.regions, givens: p.givens, solution: p.solution, difficulty: p.difficulty },
-    state: { values: s.values, notes: s.notes, selected: selected, undo: s.undo.slice(-UNDO_LIMIT), hints: hints }
+    state: { values: s.values, notes: s.notes, selected: selected, undo: s.undo.slice(-UNDO_LIMIT), hints: hints, elapsed: elapsed }
   };
 }
 
 function freshState(puzzle) {
-  return { values: puzzle.givens.slice(), notes: new Array(puzzle.givens.length).fill(0), selected: null, undo: [], hints: [] };
+  return { values: puzzle.givens.slice(), notes: new Array(puzzle.givens.length).fill(0), selected: null, undo: [], hints: [], elapsed: 0 };
+}
+
+/* --- solve times ----------------------------------------------------- */
+
+/* m:ss, or h:mm:ss once past the hour. */
+function formatTime(ms) {
+  var total = Math.floor(ms / 1000);
+  var h = Math.floor(total / 3600);
+  var m = Math.floor(total / 60) % 60;
+  var ss = String(total % 60).padStart(2, '0');
+  if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + ss;
+  return m + ':' + ss;
+}
+
+/* The best time is kept per difficulty and size, under this key. */
+function bestKey(difficulty, rows, cols) {
+  return difficulty + '/' + rows + 'x' + cols;
+}
+
+function isBestKey(key) {
+  return Object.keys(DIFFICULTIES).some(function (difficulty) {
+    return SIZES.some(function (size) { return bestKey(difficulty, size.rows, size.cols) === key; });
+  });
+}
+
+/* The bests are a map from bestKey to the fastest solve in milliseconds. */
+function deserializeBest(text) {
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return {};
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
+  var ok = Object.keys(data).every(function (key) {
+    return isBestKey(key) && Number.isInteger(data[key]) && data[key] >= 0;
+  });
+  if (!ok) return {};
+  return data;
 }
 
 /* ------------------------------------------------------------------ *
@@ -934,11 +982,15 @@ function init() {
   var hintCells = [];
   var hintList = [];
   var hintAt = 0;
-  var mistakeArmed = false;
   var winDismissed = false;
+  var solved = false;
   var cellEls = [];
+  var best = loadBest();
+  /* When the clock last started or was read, or null while it is stopped. */
+  var clockFrom = null;
 
   function save() {
+    foldClock();
     try {
       localStorage.setItem(STORAGE_KEY, serialize(puzzle, state));
     } catch (e) {
@@ -952,6 +1004,68 @@ function init() {
     } catch (e) {
       return null;
     }
+  }
+
+  function saveBest() {
+    try {
+      localStorage.setItem(BEST_STORAGE_KEY, JSON.stringify(best));
+    } catch (e) {
+      /* as in save() */
+    }
+  }
+
+  function loadBest() {
+    try {
+      return deserializeBest(localStorage.getItem(BEST_STORAGE_KEY));
+    } catch (e) {
+      return {};
+    }
+  }
+
+  /* Adds the time since the clock last started or was read to the puzzle. */
+  function foldClock() {
+    if (clockFrom === null) return;
+    var now = performance.now();
+    state.elapsed += Math.round(now - clockFrom);
+    clockFrom = now;
+  }
+
+  /* The clock only runs while the board is on screen and has focus, and stops
+   * once the puzzle is solved. */
+  function syncClock() {
+    foldClock();
+    var watching = document.visibilityState === 'visible' && document.hasFocus();
+    if (!watching || solved) {
+      clockFrom = null;
+    } else if (clockFrom === null) {
+      clockFrom = performance.now();
+    }
+  }
+
+  function recordTime() {
+    var key = bestKey(puzzle.difficulty, puzzle.rows, puzzle.cols);
+    var before = best[key];
+    /* Times are shown in whole seconds, so they are compared that way too:
+     * a solve that shows the same time as the best does not beat it. */
+    var faster = before === undefined || Math.floor(state.elapsed / 1000) < Math.floor(before / 1000);
+    var bestText = '';
+    /* A solve with hints never counts as a best. */
+    if (state.hints.length && before !== undefined) {
+      bestText = 'Hints used, so no best · Best: ' + formatTime(before);
+    } else if (state.hints.length) {
+      bestText = 'Hints used, so no best';
+    } else if (faster && before !== undefined) {
+      bestText = 'New best! Was ' + formatTime(before);
+    } else if (before !== undefined) {
+      bestText = 'Best: ' + formatTime(before);
+    }
+    if (faster && !state.hints.length) {
+      best[key] = state.elapsed;
+      saveBest();
+    }
+    save();
+    document.getElementById('time').textContent = 'Time: ' + formatTime(state.elapsed);
+    document.getElementById('best').textContent = bestText;
   }
 
   function buildGrid() {
@@ -1009,7 +1123,10 @@ function init() {
     }
     document.getElementById('undo').disabled = state.undo.length === 0;
     var filled = state.values.every(function (v) { return v > 0; });
-    var solved = filled && bad.length === 0;
+    var wasSolved = solved;
+    solved = filled && bad.length === 0;
+    syncClock();
+    if (solved && !wasSolved) recordTime();
     if (!solved) winDismissed = false;
     boardEl.classList.toggle('won', solved && !winDismissed);
     if (solved) {
@@ -1054,7 +1171,6 @@ function init() {
     hintCells = [];
     hintList = [];
     hintAt = 0;
-    mistakeArmed = false;
   }
 
   function pressDigit(d) {
@@ -1124,25 +1240,32 @@ function init() {
     render();
   }
 
-  function hint() {
-    var wrong = [];
-    for (var i = 0; i < CELLS; i++) {
-      if (state.values[i] && state.values[i] !== puzzle.solution[i]) wrong.push(i);
+  function wrongCells() {
+    return range(CELLS).filter(function (i) {
+      return state.values[i] && state.values[i] !== puzzle.solution[i];
+    });
+  }
+
+  /* Says whether anything is wrong, but not where: that takes a hint. */
+  function check() {
+    clearHint();
+    if (wrongCells().length) {
+      setStatus('Something on the board is wrong. Press Hint to see where.');
+    } else {
+      setStatus('No mistakes so far.');
     }
+    render();
+  }
+
+  function hint() {
+    var wrong = wrongCells();
     if (wrong.length) {
-      if (mistakeArmed) {
-        hintCells = wrong;
-        countHint('wrong:' + wrong.join(','));
-        setStatus(wrong.length === 1 ? 'This cell is wrong.' : 'These cells are wrong.');
-      } else {
-        hintCells = [];
-        mistakeArmed = true;
-        setStatus('Something on the board is wrong. Press Hint again to see where.');
-      }
+      hintCells = wrong;
+      countHint('wrong:' + wrong.join(','));
+      setStatus(wrong.length === 1 ? 'This cell is wrong.' : 'These cells are wrong.');
       render();
       return;
     }
-    mistakeArmed = false;
     /* Hint again on an unchanged board moves on to the next cell that can be
      * worked out, for when this one's reasoning will not come. Any move clears
      * the list, so the next hint starts from the board as it then stands. */
@@ -1175,6 +1298,7 @@ function init() {
   function startPuzzle(newPuzzle) {
     puzzle = newPuzzle;
     layout = buildLayout(puzzle.regions);
+    clockFrom = null;
     state = freshState(puzzle);
     clearHint();
     buildGrid();
@@ -1227,6 +1351,12 @@ function init() {
     for (var j = 0; j < sizes.length; j++) {
       var picked = Number(sizes[j].dataset.rows) === choice.rows && Number(sizes[j].dataset.cols) === choice.cols;
       sizes[j].setAttribute('aria-pressed', String(picked));
+    }
+    var time = best[bestKey(choice.difficulty, choice.rows, choice.cols)];
+    if (time === undefined) {
+      document.getElementById('menu-best').textContent = 'No best yet';
+    } else {
+      document.getElementById('menu-best').textContent = 'Best: ' + formatTime(time);
     }
   }
 
@@ -1304,6 +1434,7 @@ function init() {
     render();
   });
   document.getElementById('restart').addEventListener('click', restartPuzzle);
+  document.getElementById('check').addEventListener('click', check);
   document.getElementById('hintbtn').addEventListener('click', hint);
   newBtn.addEventListener('click', function () {
     if (menuEl.hidden) {
@@ -1325,6 +1456,13 @@ function init() {
     if (newBtn.contains(ev.target)) return;
     closeMenu();
   });
+
+  document.addEventListener('visibilitychange', function () {
+    syncClock();
+    save();
+  });
+  window.addEventListener('focus', syncClock);
+  window.addEventListener('blur', syncClock);
 
   document.addEventListener('keydown', function (ev) {
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
@@ -1349,6 +1487,10 @@ function init() {
     }
     if (ev.key === 'h') {
       hint();
+      return;
+    }
+    if (ev.key === 'c') {
+      check();
       return;
     }
     var move = { ArrowUp: -COLS, ArrowDown: COLS, ArrowLeft: -1, ArrowRight: 1 }[ev.key];

@@ -380,6 +380,36 @@ test('a save keeps its grid size, and saves from before sizes load as 9x7', () =
   const noHints = JSON.parse(S.serialize(puzzles.easy[0], S.freshState(puzzles.easy[0])));
   delete noHints.state.hints;
   eq(S.deserialize(JSON.stringify(noHints)).state.hints.length, 0, 'a save from before the hint counter');
+  const noTime = JSON.parse(S.serialize(puzzles.easy[0], S.freshState(puzzles.easy[0])));
+  delete noTime.state.elapsed;
+  eq(S.deserialize(JSON.stringify(noTime)).state.elapsed, 0, 'a save from before the timer');
+  noTime.state.elapsed = -5;
+  eq(S.deserialize(JSON.stringify(noTime)), null, 'negative time');
+});
+
+test('elapsed time survives a save/load round trip', () => {
+  const p = puzzles.easy[0];
+  const state = S.freshState(p);
+  state.elapsed = 123456;
+  eq(S.deserialize(S.serialize(p, state)).state.elapsed, 123456, 'elapsed');
+});
+
+test('times are shown as m:ss, or h:mm:ss past the hour', () => {
+  eq(S.formatTime(0), '0:00', 'zero');
+  eq(S.formatTime(65999), '1:05', 'rounds down');
+  eq(S.formatTime(600000), '10:00', 'ten minutes');
+  eq(S.formatTime(3723000), '1:02:03', 'past the hour');
+});
+
+test('best times load only when every entry is sound', () => {
+  const key = S.bestKey('hard', 9, 7);
+  eq(S.deserializeBest(JSON.stringify({ [key]: 61000 }))[key], 61000, 'a good best');
+  eq(Object.keys(S.deserializeBest(null)).length, 0, 'nothing saved');
+  eq(Object.keys(S.deserializeBest('not json')).length, 0, 'garbage');
+  eq(Object.keys(S.deserializeBest('[]')).length, 0, 'a list');
+  eq(Object.keys(S.deserializeBest(JSON.stringify({ [key]: 1.5 }))).length, 0, 'fractional time');
+  eq(Object.keys(S.deserializeBest(JSON.stringify({ 'hard/12x3': 1000 }))).length, 0, 'a size that is not on offer');
+  eq(Object.keys(S.deserializeBest(JSON.stringify({ 'insane/9x7': 1000 }))).length, 0, 'an unknown difficulty');
 });
 
 console.log(`\n${count - failures}/${count} passed`);
