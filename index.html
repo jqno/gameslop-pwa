@@ -43,7 +43,26 @@ body {
   padding: max(env(safe-area-inset-top), 32px) 16px max(env(safe-area-inset-bottom), 32px);
 }
 main { max-width: 720px; margin: 0 auto; }
-h1 { margin: 0 0 28px; font-size: 28px; letter-spacing: -0.02em; }
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 28px;
+}
+h1 { margin: 0; font-size: 28px; letter-spacing: -0.02em; }
+button {
+  font: inherit;
+  font-size: 14px;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+button:hover { color: var(--ink); border-color: var(--accent); }
+button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 ul {
   list-style: none;
   margin: 0;
@@ -76,7 +95,10 @@ strong { font-size: 17px; }
 </head>
 <body>
 <main>
-  <h1>Gameslop</h1>
+  <header>
+    <h1>Gameslop</h1>
+    <button id="order" type="button" aria-label="Change sort order">Most used</button>
+  </header>
   <ul>
     <li>
       <a href="suguru/">
@@ -108,6 +130,90 @@ strong { font-size: 17px; }
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(function () {});
 }
+
+// Count how often each game is opened, and list them by use or alphabetically.
+var USES_KEY = 'gameslop-uses';
+var ORDER_KEY = 'gameslop-order';
+
+function loadUses() {
+  try {
+    return JSON.parse(localStorage.getItem(USES_KEY)) || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function loadOrder() {
+  try {
+    if (localStorage.getItem(ORDER_KEY) === 'alpha') {
+      return 'alpha';
+    }
+  } catch (e) {}
+  return 'uses';
+}
+
+function save(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (e) {}
+}
+
+function gameOf(li) {
+  return li.querySelector('a').getAttribute('href');
+}
+
+function nameOf(li) {
+  return li.querySelector('strong').textContent;
+}
+
+var list = document.querySelector('ul');
+var toggle = document.getElementById('order');
+var original = Array.from(list.children);
+
+function render(order) {
+  var uses = loadUses();
+  original
+    .map(function (li, index) { return { li: li, index: index, count: uses[gameOf(li)] || 0 }; })
+    .sort(function (a, b) {
+      if (order === 'alpha') {
+        return nameOf(a.li).localeCompare(nameOf(b.li));
+      }
+      if (a.count !== b.count) {
+        return b.count - a.count;
+      }
+      return a.index - b.index;
+    })
+    .forEach(function (entry) { list.appendChild(entry.li); });
+  if (order === 'alpha') {
+    toggle.textContent = 'A–Z';
+  } else {
+    toggle.textContent = 'Most used';
+  }
+}
+
+var order = loadOrder();
+render(order);
+
+toggle.addEventListener('click', function () {
+  if (order === 'alpha') {
+    order = 'uses';
+  } else {
+    order = 'alpha';
+  }
+  save(ORDER_KEY, order);
+  render(order);
+});
+
+list.addEventListener('click', function (event) {
+  var link = event.target.closest('a');
+  if (!link) {
+    return;
+  }
+  var uses = loadUses();
+  var game = link.getAttribute('href');
+  uses[game] = (uses[game] || 0) + 1;
+  save(USES_KEY, JSON.stringify(uses));
+});
 </script>
 </body>
 </html>
