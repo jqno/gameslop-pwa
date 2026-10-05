@@ -3,6 +3,7 @@ test:
     node tools/test.mjs
     node tools/test-crowd.mjs
     node tools/test-gems.mjs
+    node tools/test-blocks.mjs
 
 # Serve the app so the service worker and manifest work
 serve port="8000":

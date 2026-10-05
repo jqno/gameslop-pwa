@@ -1,6 +1,7 @@
 /* Draws the app icons: two dice for the launcher, a small Suguru board for
  * Suguru, a crowd heading into a gate for Crowd Run, and a row of matched gems
- * for Gems. Each icon is a scene over the unit square, supersampled for smooth
+ * for Gems, and a board with a full row and a piece being dropped for Blocks.
+ * Each icon is a scene over the unit square, supersampled for smooth
  * edges. Everything sits inside the maskable safe zone (radius 0.4). */
 import { deflateSync } from 'node:zlib';
 import { writeFileSync } from 'node:fs';
@@ -248,7 +249,39 @@ function gems() {
   };
 }
 
-const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems]];
+/* --- blocks: a 4x4 board with a full row, and a piece on its way in ---- */
+
+function blocks() {
+  const cell = 0.13;
+  const origin = 0.5 - 2 * cell;
+  const half = cell * 0.42;
+  /* Row by row: '.' empty, b/p/o a block, w the full row about to clear. */
+  const board = ['..b.', 'p..b', 'wwww', 'bp.o'];
+  const colours = { b: BLUE, p: PURPLE, o: ORANGE, w: PAPER };
+  /* An L piece floating up and to the left of the gap it is heading for. */
+  const piece = [[0, 1], [1, 1], [1, 2]];
+  const lift = [-0.035, -0.045];
+  const rim = 0.012;
+  const tile = (x, y, r, c, grow) =>
+    inRoundedBox(x - origin - (c + 0.5) * cell, y - origin - (r + 0.5) * cell, half + grow, half + grow, half * 0.35 + grow);
+  return (x, y) => {
+    for (const [r, c] of piece) {
+      if (tile(x - lift[0], y - lift[1], r, c, 0)) return ORANGE;
+    }
+    for (const [r, c] of piece) {
+      if (tile(x - lift[0], y - lift[1], r, c, rim)) return BG;
+    }
+    const r = Math.floor((y - origin) / cell);
+    const c = Math.floor((x - origin) / cell);
+    if (r < 0 || c < 0 || r > 3 || c > 3) return BG;
+    if (!tile(x, y, r, c, 0)) return BG;
+    const what = board[r][c];
+    if (what === '.') return mix(BG, PAPER, 0.1);
+    return colours[what];
+  };
+}
+
+const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks]];
 for (const [dir, scene] of ICONS) {
   for (const size of [192, 512]) {
     const name = `${dir}icon-${size}.png`;
