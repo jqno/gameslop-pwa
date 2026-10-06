@@ -7,10 +7,10 @@ const match = html.match(/<script id="app">([\s\S]*?)<\/script>/);
 if (!match) throw new Error('could not find <script id="app"> in index.html');
 
 const EXPORTS = [
-  'COLS', 'ROWS', 'H', 'WIDTH', 'SHOOTER', 'COLOURS', 'MODES', 'START_ROWS', 'POINTS', 'DROP', 'rng',
+  'COLS', 'ROWS', 'H', 'WIDTH', 'SHOOTER', 'COLOURS', 'MODES', 'START_ROWS', 'POINTS', 'DROP', 'MAX_COMBO', 'rng',
   'emptyRow', 'centre', 'neighbours', 'occupied', 'cluster', 'floating', 'place', 'snap', 'trace',
   'insertRow', 'pushRow', 'lowerCeiling', 'newBoard', 'coloursOn', 'nextColour', 'isLost', 'isCleared',
-  'scoreFor', 'bestKey', 'serialize', 'deserialize'
+  'shotsPerRow', 'scoreFor', 'bestKey', 'serialize', 'deserialize'
 ];
 
 const factory = new Function(`${match[1]}\nreturn { ${EXPORTS.join(', ')} };`);

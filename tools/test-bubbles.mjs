@@ -187,9 +187,22 @@ test('the next colour is one still on the board', () => {
   assert(empty >= 0 && empty < 4, 'any colour when the board is empty');
 });
 
-test('dropped bubbles score double', () => {
-  eq(B.scoreFor([[0, 0], [0, 1], [0, 2]], []), 3 * B.POINTS, 'three popped');
-  eq(B.scoreFor([[0, 0], [0, 1], [0, 2]], [[1, 0]]), 3 * B.POINTS + B.DROP, 'and one dropped');
+test('rows come sooner as they pile up', () => {
+  eq(B.shotsPerRow(0), 8, 'at the start');
+  eq(B.shotsPerRow(1), 8, 'after one row');
+  eq(B.shotsPerRow(2), 7, 'after two rows');
+  eq(B.shotsPerRow(10), 3, 'at the fastest');
+  eq(B.shotsPerRow(100), 3, 'and no faster');
+});
+
+test('big drops and combos score extra', () => {
+  const three = [[0, 0], [0, 1], [0, 2]];
+  const drops = (n) => Array.from({ length: n }, (_, c) => [1, c]);
+  eq(B.scoreFor(three, [], 1), 3 * B.POINTS, 'three popped');
+  eq(B.scoreFor(three, drops(1), 1), 3 * B.POINTS + B.DROP, 'and one dropped');
+  eq(B.scoreFor(three, drops(4), 1), 3 * B.POINTS + 10 * B.DROP, 'four dropped score 1 + 2 + 3 + 4');
+  eq(B.scoreFor(three, [], 3), 3 * 3 * B.POINTS, 'the third pop in a row');
+  eq(B.scoreFor(three, [], 99), B.MAX_COMBO * 3 * B.POINTS, 'the combo tops out');
 });
 
 test('progress survives a round trip and bad saves are rejected', () => {

@@ -215,14 +215,20 @@ var VIEW = SHOOTER.y + 0.9;
 var COLOURS = [4, 5, 6, 7];
 var MODES = ['endless', 'puzzle'];
 var START_ROWS = { endless: 5, puzzle: 8 };
-/* Endless: a new row pushes in after this many shots that pop nothing.
- * Puzzle: the ceiling drops a row after this many shots. */
-var MISSES = 5;
+/* Endless: a new row pushes in every FIRST_ROW shots at first, a shot sooner
+ * for every two rows pushed, down to every FASTEST_ROW shots.
+ * Puzzle: the ceiling drops a row after SHOTS shots. */
+var FIRST_ROW = 8;
+var FASTEST_ROW = 3;
 var SHOTS = 8;
 /* How likely a new board copies a neighbour's colour, so it has groups to pop. */
 var CLUMP = 0.5;
+/* A popped bubble scores POINTS; the nth bubble a shot drops scores n * DROP.
+ * The lot is multiplied by the combo: how many shots in a row have popped,
+ * up to MAX_COMBO. */
 var POINTS = 10;
 var DROP = 20;
+var MAX_COMBO = 5;
 /* A shot stops this close to a bubble, a little under touching, so it can
  * slip through a gap that looks wide enough. It moves STEP at a time. */
 var REACH = 0.85;
@@ -447,8 +453,14 @@ function isCleared(board) {
   return occupied(board).length === 0;
 }
 
-function scoreFor(popped, dropped) {
-  return popped.length * POINTS + dropped.length * DROP;
+function shotsPerRow(pushed) {
+  return Math.max(FASTEST_ROW, FIRST_ROW - Math.floor(pushed / 2));
+}
+
+/* combo counts this shot, so the first pop in a row is 1. */
+function scoreFor(popped, dropped, combo) {
+  var n = dropped.length;
+  return (popped.length * POINTS + DROP * n * (n + 1) / 2) * Math.min(combo, MAX_COMBO);
 }
 
 /* The best is kept per mode and number of colours, under this key: the
@@ -519,7 +531,11 @@ function init() {
   var queue = [];
   var score = 0;
   var shots = 0;
-  var misses = 0;
+  /* Endless: rows pushed in so far, shots until the next one, and how many
+   * shots in a row have popped. */
+  var pushed = 0;
+  var untilRow = 0;
+  var combo = 0;
   /* Whether a game is under way; not while the popup is up. */
   var playing = false;
   var press = null;
@@ -654,7 +670,9 @@ function init() {
 
   function showMeta() {
     if (progress.mode === 'endless') {
-      metaEl.textContent = 'Score ' + score + '\nNew row in ' + (MISSES - misses);
+      var multiplier = '';
+      if (combo > 1) multiplier = ' ×' + Math.min(combo, MAX_COMBO);
+      metaEl.textContent = 'Score ' + score + multiplier + '\nNew row in ' + untilRow;
     } else {
       metaEl.textContent = 'Shots ' + shots + '\nDrop in ' + (SHOTS - shots % SHOTS);
     }
@@ -681,18 +699,21 @@ function init() {
       effects.push({ kind: 'fall', x: p.x, y: p.y, colour: before.cells[cell[0]][cell[1]], start: now, ms: FALL_MS });
     });
     shots++;
+    untilRow--;
     if (result.popped.length > 0) {
-      score += scoreFor(result.popped, result.dropped);
+      combo++;
+      score += scoreFor(result.popped, result.dropped, combo);
     } else {
-      misses++;
+      combo = 0;
     }
     if (isCleared(board) && progress.mode === 'puzzle') {
       finish(true);
       return;
     }
     if (!isLost(board)) {
-      if (progress.mode === 'endless' && (misses >= MISSES || isCleared(board))) {
-        misses = 0;
+      if (progress.mode === 'endless' && (untilRow === 0 || isCleared(board))) {
+        pushed++;
+        untilRow = shotsPerRow(pushed);
         board = pushRow(board, rand, progress.colours);
       }
       if (progress.mode === 'puzzle' && shots % SHOTS === 0) board = lowerCeiling(board);
@@ -742,7 +763,9 @@ function init() {
     queue = [nextColour(board, rand, progress.colours), nextColour(board, rand, progress.colours)];
     score = 0;
     shots = 0;
-    misses = 0;
+    pushed = 0;
+    untilRow = shotsPerRow(0);
+    combo = 0;
     aim = null;
     flight = null;
     effects = [];
@@ -860,7 +883,7 @@ function init() {
   });
   new ResizeObserver(resize).observe(stageEl);
   newGame();
-  overlay('Bubbles', 'Drag to aim and let go to shoot. Pop groups of three or more of a colour; whatever they held up falls too. Tap the small bubble to swap it in.', 'Play');
+  overlay('Bubbles', 'Drag to aim and let go to shoot. Pop groups of three or more of a colour; whatever they held up falls too. Big drops and popping shot after shot score extra. Tap the small bubble to swap it in.', 'Play');
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {
