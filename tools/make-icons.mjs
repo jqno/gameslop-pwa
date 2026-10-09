@@ -1,7 +1,8 @@
 /* Draws the app icons: two dice for the launcher, a small Suguru board for
  * Suguru, a crowd heading into a gate for Crowd Run, and a row of matched gems
  * for Gems, a board with a full row and a piece being dropped for Blocks, and a
- * cluster of bubbles with one flying up to it for Bubbles.
+ * cluster of bubbles with one flying up to it for Bubbles, and a corner of a
+ * minefield with a flag on its one mine for Minesweeper.
  * Each icon is a scene over the unit square, supersampled for smooth
  * edges. Everything sits inside the maskable safe zone (radius 0.4). */
 import { deflateSync } from 'node:zlib';
@@ -309,7 +310,39 @@ function bubbles() {
   };
 }
 
-const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles]];
+/* --- minesweeper: a 3x3 corner with the mine found and flagged -------- */
+
+function minesweeper() {
+  const cell = 0.17;
+  const half = cell * 0.44;
+  const origin = 0.5 - 1.5 * cell;
+  const digitHeight = cell * 0.5;
+  /* Row by row: 'c' covered, 'f' covered and flagged, a digit opened. */
+  const board = ['cfc', '111', '...'];
+  return (x, y) => {
+    const r = Math.floor((y - origin) / cell);
+    const c = Math.floor((x - origin) / cell);
+    if (r < 0 || c < 0 || r > 2 || c > 2) return BG;
+    const lx = x - origin - (c + 0.5) * cell;
+    const ly = y - origin - (r + 0.5) * cell;
+    if (!inRoundedBox(lx, ly, half, half, half * 0.3)) return BG;
+    const what = board[r][c];
+    if (what === '.') return mix(BG, PAPER, 0.08);
+    if (what === 'c') return BLUE;
+    if (what === 'f') {
+      const pole = -0.2 * half;
+      if (Math.abs(lx - pole) <= 0.08 * half && Math.abs(ly) <= 0.6 * half) return PAPER;
+      if (Math.abs(ly - 0.6 * half) <= 0.09 * half && Math.abs(lx - pole) <= 0.4 * half) return PAPER;
+      const along = (lx - pole) / (0.75 * half);
+      if (along >= 0 && Math.abs(ly + 0.3 * half) <= 0.32 * half * (1 - along)) return ORANGE;
+      return BLUE;
+    }
+    if (inGlyph(what, lx / digitHeight + 0.3, ly / digitHeight + 0.5, 0.1)) return PAPER;
+    return mix(BG, PAPER, 0.08);
+  };
+}
+
+const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper]];
 for (const [dir, scene] of ICONS) {
   for (const size of [192, 512]) {
     const name = `${dir}icon-${size}.png`;

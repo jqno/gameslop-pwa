@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Minesweeper</title>
+<meta name="description" content="Clear the field without setting off a mine.">
+<meta name="theme-color" content="#0f1420">
+<link rel="manifest" href="../manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gameslop">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root {
+  color-scheme: light dark;
+  --width: min(100%, 520px);
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --ink: #1b2130;
+  --muted: #6b7382;
+  --btn: #ffffff;
+  --btnline: #ccd2dd;
+  --sel: #cfe0ff;
+  --accent: #2358c8;
+  --tile: #c3cee2;
+  --tile-hi: #dbe3f1;
+  --open: #e9edf3;
+  --boom: #e0454f;
+  --n1: #2f6fe0;
+  --n2: #23944a;
+  --n3: #d93a44;
+  --n4: #26338f;
+  --n5: #9a2a2a;
+  --n6: #138a8a;
+  --n7: #1b2130;
+  --n8: #6b7382;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1420;
+    --panel: #161c2b;
+    --ink: #e7ebf3;
+    --muted: #8b95a8;
+    --btn: #1c2334;
+    --btnline: #313a50;
+    --sel: #2b456f;
+    --accent: #79a8ff;
+    --tile: #2f3a55;
+    --tile-hi: #3c4968;
+    --open: #161c2b;
+    --boom: #ff6b6b;
+    --n1: #6fa4ff;
+    --n2: #4fd17a;
+    --n3: #ff6b6b;
+    --n4: #b98cff;
+    --n5: #ffa94d;
+    --n6: #4fd1d1;
+    --n7: #e7ebf3;
+    --n8: #8b95a8;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+header {
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+h1 { flex: 1; font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercase; }
+.meta { font-size: 14px; line-height: 1.25; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; white-space: pre; }
+a.key, button.key {
+  font: inherit;
+  background: var(--btn);
+  color: var(--ink);
+  border: 1px solid var(--btnline);
+  border-radius: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+a.key { display: flex; align-items: center; justify-content: center; padding: 0 14px; font-size: 22px; text-decoration: none; }
+button.key { padding: 10px 20px; font-size: 16px; font-weight: 600; }
+button.key.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.key:active { background: var(--sel); }
+button.key.on { background: var(--sel); border-color: var(--accent); }
+/* The stage takes whatever height is left, and the board is the largest
+ * rectangle of its shape that fits in it. */
+.stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+}
+.board {
+  --unit: min(100cqw / var(--cols), 100cqh / var(--rows));
+  width: calc(var(--unit) * var(--cols));
+  height: calc(var(--unit) * var(--rows));
+  display: grid;
+  grid-template-columns: repeat(var(--cols), 1fr);
+  grid-template-rows: repeat(var(--rows), 1fr);
+  font-size: calc(var(--unit) * .58);
+  font-weight: 800;
+  touch-action: manipulation;
+}
+.cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 1px;
+  border-radius: 18%;
+  line-height: 1;
+  background: var(--open);
+}
+.cell.hidden {
+  background: linear-gradient(160deg, var(--tile-hi), var(--tile));
+  cursor: pointer;
+}
+.cell.pressed { filter: brightness(.9); }
+.cell.boom { background: var(--boom); }
+/* A flag on a cell that had no mine, shown once the game is lost. */
+.cell.wrong { text-decoration: line-through; text-decoration-thickness: .12em; }
+.n1 { color: var(--n1); }
+.n2 { color: var(--n2); }
+.n3 { color: var(--n3); }
+.n4 { color: var(--n4); }
+.n5 { color: var(--n5); }
+.n6 { color: var(--n6); }
+.n7 { color: var(--n7); }
+.n8 { color: var(--n8); }
+.bar {
+  flex: none;
+  width: var(--width);
+  display: flex;
+  justify-content: center;
+}
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+  background: rgba(8, 12, 22, .45);
+}
+.overlay[hidden] { display: none; }
+.overlay > div {
+  width: min(100%, 340px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 26px 20px;
+  text-align: center;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 18px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .35);
+  animation: pop .3s ease-out;
+}
+.overlay strong { font-size: 28px; line-height: 1.1; color: var(--accent); }
+.overlay p { margin: 0; color: var(--muted); }
+.overlay p#ov-best { color: var(--ink); font-weight: 600; white-space: pre; }
+.levels { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+@keyframes pop {
+  from { opacity: 0; transform: scale(.85); }
+  to { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <a class="key" href="../" aria-label="Main menu">←</a>
+  <h1>Minesweeper</h1>
+  <span class="meta" id="meta"></span>
+</header>
+<div class="stage">
+  <div class="board" id="board"></div>
+</div>
+<div class="bar">
+  <button class="key" id="mode" type="button" aria-pressed="false">🚩 Flag</button>
+</div>
+<div class="overlay" id="overlay">
+  <div>
+    <strong id="ov-title"></strong>
+    <p id="ov-text"></p>
+    <p id="ov-best"></p>
+    <div class="levels" id="levels"></div>
+  </div>
+</div>
+<script id="app">
+'use strict';
+
+/* ------------------------------------------------------------------ *
+ * Rules
+ * ------------------------------------------------------------------ */
+
+/* The field is cols x rows cells, row by row. Fields are taller than wide,
+ * to fit a phone held upright. */
+var LEVELS = [
+  { name: 'Easy', cols: 9, rows: 9, mines: 10 },
+  { name: 'Medium', cols: 10, rows: 14, mines: 24 },
+  { name: 'Hard', cols: 12, rows: 18, mines: 42 }
+];
+var STORAGE_KEY = 'minesweeper.v1';
+
+function rng(seed) {
+  var a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    var t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* The up to eight cells around cell i. */
+function neighbours(cols, rows, i) {
+  var r = Math.floor(i / cols);
+  var c = i % cols;
+  var out = [];
+  for (var dr = -1; dr <= 1; dr++) {
+    for (var dc = -1; dc <= 1; dc++) {
+      var nr = r + dr;
+      var nc = c + dc;
+      if ((dr !== 0 || dc !== 0) && nr >= 0 && nc >= 0 && nr < rows && nc < cols) out.push(nr * cols + nc);
+    }
+  }
+  return out;
+}
+
+/* A field with count mines, none on cell safe or around it, so the first
+ * cell opened is always a 0 and opens up an area. Returns a boolean per cell. */
+function layMines(cols, rows, count, safe, rand) {
+  var keepClear = neighbours(cols, rows, safe).concat([safe]);
+  var spots = [];
+  for (var i = 0; i < cols * rows; i++) {
+    if (keepClear.indexOf(i) < 0) spots.push(i);
+  }
+  for (var k = spots.length - 1; k > 0; k--) {
+    var j = Math.floor(rand() * (k + 1));
+    var t = spots[k];
+    spots[k] = spots[j];
+    spots[j] = t;
+  }
+  var chosen = spots.slice(0, count);
+  return Array.from({ length: cols * rows }, function (_, i) { return chosen.indexOf(i) >= 0; });
+}
+
+/* The number of mines around each cell. */
+function countMines(cols, rows, mines) {
+  return mines.map(function (_, i) {
+    return neighbours(cols, rows, i).filter(function (n) { return mines[n]; }).length;
+  });
+}
+
+/* A game is { cols, rows, mines, counts, open, flags }, the last two a
+ * boolean per cell; mines and counts are null until the first cell is opened. */
+function newGame(level) {
+  var size = level.cols * level.rows;
+  var none = Array.from({ length: size }, function () { return false; });
+  return { cols: level.cols, rows: level.rows, mines: null, counts: null, open: none, flags: none.slice() };
+}
+
+function withMines(game, mines) {
+  return Object.assign({}, game, { mines: mines, counts: countMines(game.cols, game.rows, mines) });
+}
+
+/* Opens the given cells, and goes on through every 0 to open the cells
+ * around it. Flagged cells stay shut. Returns the new open array. */
+function reveal(game, cells) {
+  var open = game.open.slice();
+  var todo = cells.slice();
+  while (todo.length > 0) {
+    var i = todo.pop();
+    if (open[i] || game.flags[i]) continue;
+    open[i] = true;
+    if (!game.mines[i] && game.counts[i] === 0) {
+      todo = todo.concat(neighbours(game.cols, game.rows, i));
+    }
+  }
+  return Object.assign({}, game, { open: open });
+}
+
+/* The cells a tap on cell i opens: i itself if it is shut, or, when i is an
+ * open number with as many flags around it, every other shut cell around it. */
+function toOpen(game, i) {
+  if (game.flags[i]) return [];
+  if (!game.open[i]) return [i];
+  var around = neighbours(game.cols, game.rows, i);
+  var flagged = around.filter(function (n) { return game.flags[n]; }).length;
+  if (game.counts[i] === 0 || flagged !== game.counts[i]) return [];
+  return around.filter(function (n) { return !game.open[n] && !game.flags[n]; });
+}
+
+function toggleFlag(game, i) {
+  if (game.open[i]) return game;
+  var flags = game.flags.slice();
+  flags[i] = !flags[i];
+  return Object.assign({}, game, { flags: flags });
+}
+
+function isLost(game) {
+  return game.mines !== null && game.open.some(function (open, i) { return open && game.mines[i]; });
+}
+
+function isWon(game) {
+  return game.mines !== null && game.mines.every(function (mine, i) { return mine || game.open[i]; });
+}
+
+function minesLeft(game, level) {
+  return level.mines - game.flags.filter(Boolean).length;
+}
+
+/* m:ss */
+function formatTime(seconds) {
+  return Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+}
+
+/* progress.best maps a level's name to its fastest clear in seconds. */
+function serialize(progress) {
+  return JSON.stringify({ version: 1, best: progress.best });
+}
+
+function deserialize(text) {
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+  if (!data || data.version !== 1 || !data.best || typeof data.best !== 'object') return null;
+  var ok = Object.keys(data.best).every(function (name) {
+    var known = LEVELS.some(function (level) { return level.name === name; });
+    return known && Number.isInteger(data.best[name]) && data.best[name] >= 0;
+  });
+  if (!ok) return null;
+  return { best: data.best };
+}
+
+/* ------------------------------------------------------------------ *
+ * UI
+ * ------------------------------------------------------------------ */
+
+function init() {
+  var boardEl = document.getElementById('board');
+  var modeBtn = document.getElementById('mode');
+  var overlayEl = document.getElementById('overlay');
+  var titleEl = document.getElementById('ov-title');
+  var textEl = document.getElementById('ov-text');
+  var bestEl = document.getElementById('ov-best');
+  var levelsEl = document.getElementById('levels');
+  var metaEl = document.getElementById('meta');
+
+  /* How long a press has to last to plant a flag instead. */
+  var HOLD_MS = 350;
+  /* How long the uncovered field stays in view before the popup. */
+  var REVEAL_MS = 1200;
+
+  var rand = rng(Math.floor(Math.random() * 4294967296));
+  var progress = load() || { best: {} };
+  var level = LEVELS[0];
+  var game = newGame(level);
+  var cellEls = [];
+  /* Whether a game is under way; not while the popup is up. */
+  var playing = false;
+  var flagMode = false;
+  var started = 0;
+  var ticker = null;
+  var press = null;
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, serialize(progress));
+    } catch (e) {
+      /* private mode / quota: the game still works, it just forgets. */
+    }
+  }
+
+  function load() {
+    try {
+      return deserialize(localStorage.getItem(STORAGE_KEY));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function wait(ms) {
+    return new Promise(function (done) { setTimeout(done, ms); });
+  }
+
+  function elapsed() {
+    if (started === 0) return 0;
+    return Math.floor((Date.now() - started) / 1000);
+  }
+
+  function showMeta() {
+    metaEl.textContent = 'Mines ' + minesLeft(game, level) + '\nTime ' + formatTime(elapsed());
+  }
+
+  function buildBoard() {
+    boardEl.textContent = '';
+    boardEl.style.setProperty('--cols', String(level.cols));
+    boardEl.style.setProperty('--rows', String(level.rows));
+    cellEls = game.open.map(function () {
+      var el = document.createElement('div');
+      boardEl.appendChild(el);
+      return el;
+    });
+  }
+
+  /* Draws the field; once over, shows every mine and every wrong flag. */
+  function paint(over) {
+    cellEls.forEach(function (el, i) {
+      var mine = game.mines !== null && game.mines[i];
+      var cls = 'cell';
+      var text = '';
+      if (game.open[i] && mine) {
+        cls += ' boom';
+        text = '💣';
+      } else if (game.open[i]) {
+        if (game.counts[i] > 0) {
+          cls += ' n' + game.counts[i];
+          text = String(game.counts[i]);
+        }
+      } else if (game.flags[i]) {
+        cls += ' hidden';
+        text = '🚩';
+        if (over && !mine) cls += ' wrong';
+      } else if (over && mine) {
+        cls += ' hidden';
+        text = '💣';
+      } else {
+        cls += ' hidden';
+      }
+      el.className = cls;
+      el.textContent = text;
+    });
+  }
+
+  function open(i) {
+    var cells = toOpen(game, i);
+    if (cells.length === 0) return;
+    if (game.mines === null) {
+      game = withMines(game, layMines(game.cols, game.rows, level.mines, i, rand));
+      started = Date.now();
+      ticker = setInterval(showMeta, 1000);
+    }
+    game = reveal(game, cells);
+    if (isLost(game)) {
+      finish(false);
+    } else if (isWon(game)) {
+      finish(true);
+    } else {
+      paint(false);
+    }
+  }
+
+  function flag(i) {
+    if (game.open[i]) return;
+    game = toggleFlag(game, i);
+    if (navigator.vibrate) navigator.vibrate(15);
+    paint(false);
+    showMeta();
+  }
+
+  async function finish(won) {
+    playing = false;
+    clearInterval(ticker);
+    var time = elapsed();
+    if (won) {
+      /* Every mine is known now, so flag the ones left. */
+      game = Object.assign({}, game, { flags: game.mines.slice() });
+    }
+    paint(true);
+    showMeta();
+    await wait(REVEAL_MS);
+    if (!won) {
+      overlay('Boom!', 'You hit a mine. Pick a level to try again.');
+      return;
+    }
+    var text = level.name + ' cleared in ' + formatTime(time) + '.';
+    var best = progress.best[level.name];
+    if (best === undefined || time < best) {
+      if (best !== undefined) text += ' New best!';
+      progress.best[level.name] = time;
+      save();
+    }
+    overlay('Cleared!', text);
+  }
+
+  function start(next) {
+    level = next;
+    game = newGame(level);
+    started = 0;
+    clearInterval(ticker);
+    buildBoard();
+    paint(false);
+    showMeta();
+  }
+
+  function overlay(title, text) {
+    titleEl.textContent = title;
+    textEl.textContent = text;
+    bestEl.textContent = LEVELS.map(function (l) {
+      var best = progress.best[l.name];
+      if (best === undefined) return l.name + ': —';
+      return l.name + ': ' + formatTime(best);
+    }).join('\n');
+    overlayEl.hidden = false;
+    var current = levelsEl.querySelector('[data-level="' + level.name + '"]');
+    current.focus();
+  }
+
+  LEVELS.forEach(function (l) {
+    var btn = document.createElement('button');
+    btn.className = 'key';
+    btn.type = 'button';
+    btn.textContent = l.name;
+    btn.dataset.level = l.name;
+    btn.addEventListener('click', function () {
+      overlayEl.hidden = true;
+      start(l);
+      playing = true;
+    });
+    levelsEl.appendChild(btn);
+  });
+
+  function setMode(on) {
+    flagMode = on;
+    modeBtn.classList.toggle('on', on);
+    modeBtn.setAttribute('aria-pressed', String(on));
+  }
+
+  modeBtn.addEventListener('click', function () { setMode(!flagMode); });
+
+  /* By position, not ev.target: a touch keeps targeting the cell it began on. */
+  function cellAt(ev) {
+    var el = document.elementFromPoint(ev.clientX, ev.clientY);
+    if (el === null) return -1;
+    return cellEls.indexOf(el.closest('.cell'));
+  }
+
+  function release() {
+    if (press === null) return;
+    clearTimeout(press.timer);
+    cellEls[press.cell].classList.remove('pressed');
+    press = null;
+  }
+
+  /* A tap opens a cell (or flags it, in flag mode); holding it, or a right
+   * click, does the other. A tap on an open number whose mines are all
+   * flagged opens the rest of the cells around it. */
+  boardEl.addEventListener('pointerdown', function (ev) {
+    if (!playing || press !== null) return;
+    var i = cellAt(ev);
+    if (i < 0) return;
+    if (ev.button === 2) {
+      flag(i);
+      return;
+    }
+    cellEls[i].classList.add('pressed');
+    press = {
+      cell: i,
+      id: ev.pointerId,
+      held: false,
+      timer: setTimeout(function () {
+        press.held = true;
+        cellEls[i].classList.remove('pressed');
+        if (flagMode) {
+          open(i);
+        } else {
+          flag(i);
+        }
+      }, HOLD_MS)
+    };
+  });
+
+  boardEl.addEventListener('pointerup', function (ev) {
+    if (press === null || press.id !== ev.pointerId) return;
+    var i = press.cell;
+    var held = press.held;
+    release();
+    if (held || !playing || cellAt(ev) !== i) return;
+    if (flagMode && !game.open[i]) {
+      flag(i);
+    } else {
+      open(i);
+    }
+  });
+
+  /* Dragging off the cell, or the browser taking over to scroll, cancels. */
+  boardEl.addEventListener('pointerleave', release);
+  boardEl.addEventListener('pointercancel', release);
+  boardEl.addEventListener('pointermove', function (ev) {
+    if (press !== null && !press.held && cellAt(ev) !== press.cell) release();
+  });
+  boardEl.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
+
+  start(level);
+  overlay('Minesweeper', 'Open every cell that has no mine. A number tells how many mines touch that cell. Hold a cell, or use 🚩 Flag, to mark a mine.');
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('../sw.js').catch(function () {
+        /* file:// or no HTTPS: the app runs fine, it just is not installable. */
+      });
+    });
+  }
+}
+
+if (typeof document !== 'undefined') init();
+</script>
+</body>
+</html>
