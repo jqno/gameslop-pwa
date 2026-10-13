@@ -6,5 +6,6 @@ Gameslop is a progressive web app full of small games:
 - Blocks
 - Bubbles
 - Minesweeper
+- Pipe Connect
 
 I totally vibecoded this. I'm sorry...

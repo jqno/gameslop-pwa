@@ -2,7 +2,8 @@
  * Suguru, a crowd heading into a gate for Crowd Run, and a row of matched gems
  * for Gems, a board with a full row and a piece being dropped for Blocks, and a
  * cluster of bubbles with one flying up to it for Bubbles, and a corner of a
- * minefield with a flag on its one mine for Minesweeper.
+ * minefield with a flag on its one mine for Minesweeper, and a grid filled
+ * with three connected pipes for Pipe Connect.
  * Each icon is a scene over the unit square, supersampled for smooth
  * edges. Everything sits inside the maskable safe zone (radius 0.4). */
 import { deflateSync } from 'node:zlib';
@@ -342,7 +343,33 @@ function minesweeper() {
   };
 }
 
-const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper]];
+/* --- pipe connect: a 4x4 grid filled by three pipes -------------------- */
+
+function pipes() {
+  const cell = 0.13;
+  const origin = 0.5 - 2 * cell;
+  const half = cell * 0.44;
+  /* Each pipe as its cells, [row, col], from one end to the other. */
+  const lines = [
+    [BLUE, [[0, 0], [0, 1], [0, 2], [1, 2], [2, 2], [2, 1]]],
+    [ORANGE, [[0, 3], [1, 3], [2, 3], [3, 3], [3, 2]]],
+    [PURPLE, [[1, 1], [1, 0], [2, 0], [3, 0], [3, 1]]]
+  ].map(([colour, cells]) => [colour, cells.map(([r, c]) => [origin + (c + 0.5) * cell, origin + (r + 0.5) * cell])]);
+  return (x, y) => {
+    for (const [colour, points] of lines) {
+      const ends = [points[0], points[points.length - 1]];
+      if (ends.some(([px, py]) => Math.hypot(x - px, y - py) <= cell * 0.36)) return colour;
+      if (points.slice(1).some((point, k) => segmentDistance(x, y, points[k], point) <= cell * 0.17)) return colour;
+    }
+    const r = Math.floor((y - origin) / cell);
+    const c = Math.floor((x - origin) / cell);
+    if (r < 0 || c < 0 || r > 3 || c > 3) return BG;
+    if (!inRoundedBox(x - origin - (c + 0.5) * cell, y - origin - (r + 0.5) * cell, half, half, half * 0.3)) return BG;
+    return mix(BG, PAPER, 0.08);
+  };
+}
+
+const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper], ['pipes/', pipes]];
 for (const [dir, scene] of ICONS) {
   for (const size of [192, 512]) {
     const name = `${dir}icon-${size}.png`;

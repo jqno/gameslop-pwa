@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pipe Connect</title>
+<meta name="description" content="Connect the matching dots with pipes that fill the whole grid.">
+<meta name="theme-color" content="#0f1420">
+<link rel="manifest" href="../manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gameslop">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root {
+  color-scheme: light dark;
+  --width: min(100%, 520px);
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --ink: #1b2130;
+  --muted: #6b7382;
+  --btn: #ffffff;
+  --btnline: #ccd2dd;
+  --sel: #cfe0ff;
+  --accent: #2358c8;
+  /* The board stays dark in both themes, so every pipe colour stands out. */
+  --board: #1b2130;
+  --cell: #283149;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1420;
+    --panel: #161c2b;
+    --ink: #e7ebf3;
+    --muted: #8b95a8;
+    --btn: #1c2334;
+    --btnline: #313a50;
+    --sel: #2b456f;
+    --accent: #79a8ff;
+    --board: #0a0e18;
+    --cell: #1c2334;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+header {
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+h1 { flex: 1; font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercase; }
+.meta { font-size: 14px; line-height: 1.25; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; white-space: pre; }
+a.key, button.key {
+  font: inherit;
+  background: var(--btn);
+  color: var(--ink);
+  border: 1px solid var(--btnline);
+  border-radius: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+a.key { display: flex; align-items: center; justify-content: center; padding: 0 14px; font-size: 22px; text-decoration: none; }
+button.key { padding: 10px 20px; font-size: 16px; font-weight: 600; }
+button.key.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.key:active { background: var(--sel); }
+/* The stage takes whatever height is left, and the board is the largest
+ * square that fits in it. */
+.stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+}
+.board {
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+  background: var(--board);
+  border-radius: 10px;
+  touch-action: none;
+}
+.board svg { display: block; width: 100%; height: 100%; }
+/* Back leaves for the main menu and New throws the game away. */
+.actions {
+  position: relative;
+  flex: none;
+  width: var(--width);
+  display: grid;
+  grid-template-columns: auto auto auto;
+  justify-content: start;
+  gap: 6px;
+}
+.actions button.key { padding-inline: 14px; }
+.sep { width: 1px; margin: 6px 3px; background: var(--btnline); border-radius: 1px; }
+/* The New menu hangs below its button. */
+.menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 10px);
+  z-index: 5;
+  width: min(100%, 300px);
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--btnline);
+  border-radius: 14px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .28);
+}
+/* Without this, display: grid above would beat the hidden attribute. */
+.menu[hidden] { display: none; }
+.menu h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.chip {
+  font: inherit;
+  font-size: 14px;
+  min-height: 38px;
+  border: 1px solid var(--btnline);
+  border-radius: 8px;
+  background: var(--btn);
+  color: var(--ink);
+  cursor: pointer;
+}
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.menu p { margin: 0; font-size: 14px; font-weight: 600; text-align: center; }
+.menu .go { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+  background: rgba(8, 12, 22, .45);
+}
+.overlay[hidden] { display: none; }
+.overlay > div {
+  width: min(100%, 340px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 26px 20px;
+  text-align: center;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 18px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .35);
+  animation: pop .3s ease-out;
+}
+.overlay strong { font-size: 28px; line-height: 1.1; color: var(--accent); }
+.overlay p { margin: 0; color: var(--muted); }
+.overlay .buttons { display: flex; gap: 8px; }
+@keyframes pop {
+  from { opacity: 0; transform: scale(.85); }
+  to { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Pipe Connect</h1>
+  <span class="meta" id="meta"></span>
+</header>
+<div class="actions">
+  <a class="key" href="../" aria-label="Main menu">←</a>
+  <span class="sep" aria-hidden="true"></span>
+  <button class="key" id="new" type="button" aria-haspopup="true" aria-expanded="false">New</button>
+  <div class="menu" id="menu" hidden>
+    <h2>Level</h2>
+    <div class="chips" id="menu-level"></div>
+    <p id="menu-size"></p>
+    <div class="go">
+      <button class="key" id="menu-cancel" type="button">Cancel</button>
+      <button class="key primary" id="menu-start" type="button">Start</button>
+    </div>
+  </div>
+</div>
+<div class="stage">
+  <div class="board" id="board"></div>
+</div>
+<div class="overlay" id="overlay">
+  <div>
+    <strong id="ov-title"></strong>
+    <p id="ov-text"></p>
+    <div class="buttons">
+      <button class="key" id="dismiss" type="button">Back to the board</button>
+      <button class="key primary" id="again" type="button">New</button>
+    </div>
+  </div>
+</div>
+<script id="app">
+'use strict';
+
+/* ------------------------------------------------------------------ *
+ * Rules
+ * ------------------------------------------------------------------ */
+
+/* The grid is size x size cells, row by row. */
+var LEVELS = [
+  { name: 'Easy', size: 6 },
+  { name: 'Medium', size: 8 },
+  { name: 'Hard', size: 10 }
+];
+/* The shortest pipe in a puzzle: two ends and at least one cell between. */
+var MIN_PIPE = 3;
+var COLOURS = [
+  '#e6194b', '#3cb44b', '#4363d8', '#ffe119', '#f58231', '#a855f7', '#42d4f4',
+  '#f032e6', '#bfef45', '#fabed4', '#469990', '#dcbeff', '#9a6324', '#aaffc3',
+  '#ffffff', '#9ca3af'
+];
+/* How many steps the solver may take to prove a puzzle has one answer
+ * before it gives up on it; real puzzles take a few hundred at most. */
+var SEARCH_LIMIT = 100000;
+
+function rng(seed) {
+  var a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    var t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* The up to four cells beside cell i. */
+function neighbours(size, i) {
+  var r = Math.floor(i / size);
+  var c = i % size;
+  var out = [];
+  if (r > 0) out.push(i - size);
+  if (c > 0) out.push(i - 1);
+  if (c < size - 1) out.push(i + 1);
+  if (r < size - 1) out.push(i + size);
+  return out;
+}
+
+/* The cell next to from, one step closer to to. */
+function towards(size, from, to) {
+  var dr = Math.floor(to / size) - Math.floor(from / size);
+  var dc = to % size - from % size;
+  if (Math.abs(dr) >= Math.abs(dc)) return from + Math.sign(dr) * size;
+  return from + Math.sign(dc);
+}
+
+/* Whether a pipe never touches itself, other than cell to next cell. A pipe
+ * that does could take a shortcut and leave cells empty. */
+function isTight(size, path) {
+  return path.every(function (cell, i) {
+    return neighbours(size, cell).every(function (n) {
+      var at = path.indexOf(n);
+      return at < 0 || Math.abs(at - i) === 1;
+    });
+  });
+}
+
+/* Whether tight pipes a and b make one tight pipe with b put after a: the
+ * only place they touch is where they join. */
+function fitsAfter(size, a, b) {
+  var inB = new Set(b);
+  var last = a[a.length - 1];
+  return a.every(function (cell) {
+    return neighbours(size, cell).every(function (n) {
+      return !inB.has(n) || (cell === last && n === b[0]);
+    });
+  });
+}
+
+/* Every way to join two pipes end to end into one tight pipe. A change is
+ * { remove, add }: the indexes of the pipes it replaces, and their replacements. */
+function joins(size, pipes) {
+  var endOf = new Map();
+  pipes.forEach(function (p, k) {
+    endOf.set(p[0], k);
+    endOf.set(p[p.length - 1], k);
+  });
+  var out = [];
+  pipes.forEach(function (p, k) {
+    [p, p.slice().reverse()].forEach(function (a) {
+      neighbours(size, a[a.length - 1]).forEach(function (n) {
+        var q = endOf.get(n);
+        if (q === undefined || q <= k) return;
+        var b = pipes[q];
+        if (b[0] !== n) b = b.slice().reverse();
+        if (fitsAfter(size, a, b)) out.push({ remove: [k, q], add: [a.concat(b)] });
+      });
+    });
+  });
+  return out;
+}
+
+/* Every way for a short pipe to take over a pipe beside it, from that pipe's
+ * end up to the cell next to it, leaving the rest of that pipe on its own. */
+function steals(size, pipes) {
+  var out = [];
+  pipes.forEach(function (p, k) {
+    if (p.length >= MIN_PIPE) return;
+    [p, p.slice().reverse()].forEach(function (a) {
+      neighbours(size, a[0]).forEach(function (n) {
+        var q = pipes.findIndex(function (r) { return r.indexOf(n) >= 0; });
+        if (q === k) return;
+        var at = pipes[q].indexOf(n);
+        var halves = [
+          [pipes[q].slice(0, at + 1), pipes[q].slice(at + 1)],
+          [pipes[q].slice(at).reverse(), pipes[q].slice(0, at)]
+        ];
+        halves.forEach(function (h) {
+          var joined = h[0].concat(a);
+          if (isTight(size, joined)) out.push({ remove: [k, q], add: [joined, h[1]] });
+        });
+      });
+    });
+  });
+  return out;
+}
+
+function applyChange(pipes, change) {
+  return pipes
+    .filter(function (_, i) { return change.remove.indexOf(i) < 0; })
+    .concat(change.add.filter(function (p) { return p.length > 0; }));
+}
+
+/* Covers the grid with tight pipes at random: it starts with a pipe on every
+ * cell and joins them up, short ones first, until there are at most most of
+ * them or nothing can be joined any more. A short pipe that can not be joined
+ * to anything takes over part of a pipe beside it. Returns null if it gets
+ * stuck anyway. */
+function tile(size, most, rand) {
+  var pipes = Array.from({ length: size * size }, function (_, i) { return [i]; });
+  var isShort = function (p) { return p.length < MIN_PIPE; };
+  for (var step = 0; step < 20 * size * size; step++) {
+    var anyShort = pipes.some(isShort);
+    if (!anyShort && pipes.length <= most) return pipes;
+    var changes = joins(size, pipes);
+    var urgent = changes.filter(function (c) {
+      return c.remove.some(function (k) { return isShort(pipes[k]); });
+    });
+    if (urgent.length > 0) changes = urgent;
+    if (changes.length === 0 && !anyShort) return pipes;
+    if (changes.length === 0) changes = steals(size, pipes);
+    if (changes.length === 0) return null;
+    pipes = applyChange(pipes, changes[Math.floor(rand() * changes.length)]);
+  }
+  return null;
+}
+
+/* Whether connecting every pair of ends can be done in only one way, cells
+ * being allowed to stay empty, and that way fills the grid. Then every cell
+ * is needed. It is enough to look at tight pipes, since a pipe that touches
+ * itself can take a shortcut that only leaves more cells empty.
+ *
+ * The search grows pipes from both their ends, always at the end with the
+ * fewest ways to go, and backs off when two ends of a pipe can no longer
+ * meet through the empty cells. A puzzle that takes too long counts as not
+ * proven, so it is never used. */
+function needsEveryCell(size, ends) {
+  var colour = Array.from({ length: size * size }, function () { return -1; });
+  ends.forEach(function (pair, k) {
+    colour[pair[0]] = k;
+    colour[pair[1]] = k;
+  });
+  var heads = ends.map(function (pair) { return pair.slice(); });
+  var done = ends.map(function (pair) { return neighbours(size, pair[0]).indexOf(pair[1]) >= 0; });
+  var found = 0;
+  var full = false;
+  var steps = 0;
+
+  /* The empty cells head s of pipe k can grow into and stay tight. Growing
+   * next to the other head joins the pipe up. */
+  function moves(k, s) {
+    var head = heads[k][s];
+    var other = heads[k][1 - s];
+    var out = [];
+    neighbours(size, head).forEach(function (cell) {
+      if (colour[cell] !== -1) return;
+      var touches = neighbours(size, cell).filter(function (n) { return n !== head && colour[n] === k; });
+      var tight = touches.every(function (n) { return n === other; });
+      if (tight) out.push({ cell: cell, joins: touches.length > 0 });
+    });
+    return out;
+  }
+
+  /* Numbers each patch of connected empty cells; -1 for the rest. */
+  function patches() {
+    var patch = colour.map(function () { return -1; });
+    var next = 0;
+    colour.forEach(function (c, start) {
+      if (c !== -1 || patch[start] !== -1) return;
+      var todo = [start];
+      patch[start] = next;
+      while (todo.length > 0) {
+        neighbours(size, todo.pop()).forEach(function (n) {
+          if (colour[n] === -1 && patch[n] === -1) {
+            patch[n] = next;
+            todo.push(n);
+          }
+        });
+      }
+      next++;
+    });
+    return patch;
+  }
+
+  function canMeet(patch, k) {
+    var near = neighbours(size, heads[k][1]).map(function (n) { return patch[n]; });
+    return neighbours(size, heads[k][0]).some(function (n) {
+      return patch[n] >= 0 && near.indexOf(patch[n]) >= 0;
+    });
+  }
+
+  function search() {
+    steps++;
+    if (steps > SEARCH_LIMIT) {
+      found = 2;
+      return;
+    }
+    var patch = patches();
+    var best = null;
+    for (var k = 0; k < ends.length; k++) {
+      if (done[k]) continue;
+      if (!canMeet(patch, k)) return;
+      for (var s = 0; s < 2; s++) {
+        var options = moves(k, s);
+        if (options.length === 0) return;
+        if (best === null || options.length < best.options.length) best = { pipe: k, side: s, options: options };
+      }
+    }
+    if (best === null) {
+      found++;
+      full = colour.indexOf(-1) < 0;
+      return;
+    }
+    var head = heads[best.pipe][best.side];
+    for (var i = 0; i < best.options.length && found < 2; i++) {
+      var move = best.options[i];
+      colour[move.cell] = best.pipe;
+      heads[best.pipe][best.side] = move.cell;
+      done[best.pipe] = move.joins;
+      search();
+      colour[move.cell] = -1;
+      heads[best.pipe][best.side] = head;
+      done[best.pipe] = false;
+    }
+  }
+
+  search();
+  return found === 1 && full;
+}
+
+/* A puzzle is { size, ends, solution }: ends holds the two end cells of each
+ * pipe. It is made from a solution that fills the grid, and only used once
+ * needsEveryCell has proven that solution is the only one. */
+function generate(level, rand) {
+  for (;;) {
+    var solution = tile(level.size, Math.round(level.size * 1.4), rand);
+    if (solution === null || solution.length > COLOURS.length) continue;
+    var ends = solution.map(function (pipe) { return [pipe[0], pipe[pipe.length - 1]]; });
+    if (needsEveryCell(level.size, ends)) return { size: level.size, ends: ends, solution: solution };
+  }
+}
+
+/* A game is { size, ends, paths }: paths holds the cells drawn for each
+ * pipe, starting at one of its ends. No cell is in two paths. */
+function newGame(puzzle) {
+  return { size: puzzle.size, ends: puzzle.ends, paths: puzzle.ends.map(function () { return []; }) };
+}
+
+function withPath(game, k, path) {
+  var paths = game.paths.slice();
+  paths[k] = path;
+  return Object.assign({}, game, { paths: paths });
+}
+
+/* The pipe with an end on cell i, or -1. */
+function endAt(game, i) {
+  return game.ends.findIndex(function (ends) { return ends.indexOf(i) >= 0; });
+}
+
+/* The pipe drawn through cell i, or -1. */
+function pathAt(game, i) {
+  return game.paths.findIndex(function (path) { return path.indexOf(i) >= 0; });
+}
+
+/* Whether pipe k runs from one of its ends to the other. */
+function isConnected(game, k) {
+  var path = game.paths[k];
+  return path.length >= 2 && game.ends[k].indexOf(path[path.length - 1]) >= 0;
+}
+
+/* Pressing cell i picks up the pipe drawn through it, cut back to there, or
+ * starts its pipe afresh if it is an end. Returns { game, pipe }, or null. */
+function pickUp(game, i) {
+  var k = pathAt(game, i);
+  if (k >= 0) {
+    var path = game.paths[k];
+    return { game: withPath(game, k, path.slice(0, path.indexOf(i) + 1)), pipe: k };
+  }
+  k = endAt(game, i);
+  if (k < 0) return null;
+  return { game: withPath(game, k, [i]), pipe: k };
+}
+
+/* Draws pipe k into cell i. Going back over the pipe cuts it back to there.
+ * Otherwise i must be beside the last cell, and the pipe stops at its other
+ * end and never runs onto another pipe's end; running into another pipe
+ * cuts that one short. Returns the game unchanged if the move is not allowed. */
+function extend(game, k, i) {
+  var path = game.paths[k];
+  var at = path.indexOf(i);
+  if (at >= 0) return withPath(game, k, path.slice(0, at + 1));
+  if (isConnected(game, k)) return game;
+  if (neighbours(game.size, path[path.length - 1]).indexOf(i) < 0) return game;
+  var owner = endAt(game, i);
+  if (owner >= 0 && owner !== k) return game;
+  var other = pathAt(game, i);
+  var cleared = game;
+  if (other >= 0) {
+    cleared = withPath(game, other, game.paths[other].slice(0, game.paths[other].indexOf(i)));
+  }
+  return withPath(cleared, k, path.concat([i]));
+}
+
+/* Draws pipe k towards cell i a cell at a time, as far as it can go, so a
+ * quick swipe that skips cells still draws through them. */
+function drawTo(game, k, i) {
+  var path = game.paths[k];
+  if (path.indexOf(i) >= 0) return extend(game, k, i);
+  var next = extend(game, k, towards(game.size, path[path.length - 1], i));
+  if (next === game) return game;
+  return drawTo(next, k, i);
+}
+
+/* How many cells the pipes cover. */
+function filled(game) {
+  return game.paths.reduce(function (sum, path) { return sum + path.length; }, 0);
+}
+
+function connectedCount(game) {
+  return game.paths.filter(function (_, k) { return isConnected(game, k); }).length;
+}
+
+function isSolved(game) {
+  return connectedCount(game) === game.ends.length && filled(game) === game.size * game.size;
+}
+
+/* ------------------------------------------------------------------ *
+ * UI
+ * ------------------------------------------------------------------ */
+
+function init() {
+  var boardEl = document.getElementById('board');
+  var overlayEl = document.getElementById('overlay');
+  var titleEl = document.getElementById('ov-title');
+  var textEl = document.getElementById('ov-text');
+  var dismissBtn = document.getElementById('dismiss');
+  var againBtn = document.getElementById('again');
+  var menuEl = document.getElementById('menu');
+  var newBtn = document.getElementById('new');
+  var metaEl = document.getElementById('meta');
+
+  var rand = rng(Math.floor(Math.random() * 4294967296));
+  var level = LEVELS[0];
+  var game = newGame(generate(level, rand));
+  /* Whether a game is under way; not once it has been solved. */
+  var playing = false;
+  /* The level picked in the New menu, until Start. */
+  var choice = level;
+  /* The pipe being drawn, while a finger or the mouse is down. */
+  var drawing = null;
+
+  function showMeta() {
+    var percent = Math.floor(100 * filled(game) / (game.size * game.size));
+    metaEl.textContent = 'Pipes ' + connectedCount(game) + '/' + game.ends.length + '\nFilled ' + percent + '%';
+  }
+
+  /* Draws the board as SVG, one unit per cell: covered cells tinted in
+   * their pipe's colour, then the pipes, then the ends on top. */
+  function paint() {
+    var n = game.size;
+    var owner = Array.from({ length: n * n }, function () { return -1; });
+    game.paths.forEach(function (path, k) {
+      path.forEach(function (i) { owner[i] = k; });
+    });
+    var centre = function (i) { return (i % n + 0.5) + ',' + (Math.floor(i / n) + 0.5); };
+    var cells = owner.map(function (k, i) {
+      var x = i % n + 0.04;
+      var y = Math.floor(i / n) + 0.04;
+      var fill = 'var(--cell)';
+      var opacity = 1;
+      if (k >= 0) {
+        fill = COLOURS[k];
+        opacity = 0.28;
+      }
+      return '<rect x="' + x + '" y="' + y + '" width=".92" height=".92" rx=".14" fill="' + fill + '" opacity="' + opacity + '"/>';
+    });
+    var pipes = game.paths.map(function (path, k) {
+      if (path.length < 2) return '';
+      return '<polyline points="' + path.map(centre).join(' ') + '" fill="none" stroke="' + COLOURS[k] +
+        '" stroke-width=".34" stroke-linecap="round" stroke-linejoin="round"/>';
+    });
+    var ends = game.ends.map(function (pair, k) {
+      return pair.map(function (i) {
+        var xy = centre(i).split(',');
+        return '<circle cx="' + xy[0] + '" cy="' + xy[1] + '" r=".36" fill="' + COLOURS[k] + '"/>';
+      }).join('');
+    });
+    boardEl.innerHTML = '<svg viewBox="0 0 ' + n + ' ' + n + '">' + cells.join('') + pipes.join('') + ends.join('') + '</svg>';
+    showMeta();
+  }
+
+  function start(next) {
+    level = next;
+    game = newGame(generate(level, rand));
+    drawing = null;
+    playing = true;
+    paint();
+  }
+
+  /* With again, it also offers a new game at the same level. */
+  function overlay(title, text, button, again) {
+    titleEl.textContent = title;
+    textEl.textContent = text;
+    dismissBtn.textContent = button;
+    againBtn.hidden = !again;
+    overlayEl.hidden = false;
+    if (again) {
+      againBtn.focus();
+    } else {
+      dismissBtn.focus();
+    }
+  }
+
+  dismissBtn.addEventListener('click', function () { overlayEl.hidden = true; });
+  againBtn.addEventListener('click', function () {
+    overlayEl.hidden = true;
+    start(level);
+  });
+
+  function renderMenu() {
+    menuEl.querySelectorAll('.chip').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.level === choice.name));
+    });
+    document.getElementById('menu-size').textContent = choice.size + ' × ' + choice.size;
+  }
+
+  function openMenu() {
+    choice = level;
+    renderMenu();
+    menuEl.hidden = false;
+    newBtn.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeMenu() {
+    menuEl.hidden = true;
+    newBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  LEVELS.forEach(function (l) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip';
+    b.textContent = l.name;
+    b.dataset.level = l.name;
+    b.addEventListener('click', function () {
+      choice = l;
+      renderMenu();
+    });
+    document.getElementById('menu-level').appendChild(b);
+  });
+
+  newBtn.addEventListener('click', function () {
+    if (menuEl.hidden) {
+      openMenu();
+    } else {
+      closeMenu();
+    }
+  });
+  document.getElementById('menu-cancel').addEventListener('click', closeMenu);
+  document.getElementById('menu-start').addEventListener('click', function () {
+    closeMenu();
+    var underWay = playing && filled(game) > 0;
+    if (underWay && !confirm('Start a new game? This one will be lost.')) return;
+    start(choice);
+  });
+  /* A tap anywhere outside the menu puts it away, as a popup should. */
+  document.addEventListener('click', function (ev) {
+    if (menuEl.hidden) return;
+    if (menuEl.contains(ev.target)) return;
+    if (newBtn.contains(ev.target)) return;
+    closeMenu();
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') closeMenu();
+  });
+
+  function cellAt(ev) {
+    var rect = boardEl.getBoundingClientRect();
+    var c = Math.floor((ev.clientX - rect.left) / rect.width * game.size);
+    var r = Math.floor((ev.clientY - rect.top) / rect.height * game.size);
+    if (r < 0 || c < 0 || r >= game.size || c >= game.size) return -1;
+    return r * game.size + c;
+  }
+
+  /* Press a dot to draw its pipe, or a pipe to carry on from that point,
+   * and drag through the cells. */
+  boardEl.addEventListener('pointerdown', function (ev) {
+    if (!playing || drawing !== null) return;
+    var i = cellAt(ev);
+    if (i < 0) return;
+    var picked = pickUp(game, i);
+    if (picked === null) return;
+    boardEl.setPointerCapture(ev.pointerId);
+    game = picked.game;
+    drawing = { pipe: picked.pipe, id: ev.pointerId, cell: i };
+    paint();
+  });
+
+  boardEl.addEventListener('pointermove', function (ev) {
+    if (drawing === null || drawing.id !== ev.pointerId) return;
+    var i = cellAt(ev);
+    if (i < 0 || i === drawing.cell) return;
+    drawing.cell = i;
+    var next = drawTo(game, drawing.pipe, i);
+    if (next === game) return;
+    game = next;
+    paint();
+  });
+
+  function release(ev) {
+    if (drawing === null || drawing.id !== ev.pointerId) return;
+    drawing = null;
+    if (!isSolved(game)) return;
+    playing = false;
+    overlay('Solved!', level.name + ' puzzle complete.', 'Back to the board', true);
+  }
+
+  boardEl.addEventListener('pointerup', release);
+  boardEl.addEventListener('pointercancel', release);
+  boardEl.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
+
+  start(level);
+  overlay('Pipe Connect', 'Join each pair of matching dots with a pipe. Pipes may not cross, and together they must fill every cell. Drag from a dot to draw.', 'Play', false);
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('../sw.js').catch(function () {
+        /* file:// or no HTTPS: the app runs fine, it just is not installable. */
+      });
+    });
+  }
+}
+
+if (typeof document !== 'undefined') init();
+</script>
+</body>
+</html>
