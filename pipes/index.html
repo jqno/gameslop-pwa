@@ -102,13 +102,14 @@ button.key:active { background: var(--sel); }
   touch-action: none;
 }
 .board svg { display: block; width: 100%; height: 100%; }
-/* Back leaves for the main menu and New throws the game away. */
+/* Back leaves for the main menu, New throws the game away, and Restart
+ * clears the pipes from this one. */
 .actions {
   position: relative;
   flex: none;
   width: var(--width);
   display: grid;
-  grid-template-columns: auto auto auto;
+  grid-template-columns: auto auto auto auto;
   justify-content: start;
   gap: 6px;
 }
@@ -198,6 +199,7 @@ button.key:active { background: var(--sel); }
   <a class="key" href="../" aria-label="Main menu">←</a>
   <span class="sep" aria-hidden="true"></span>
   <button class="key" id="new" type="button" aria-haspopup="true" aria-expanded="false">New</button>
+  <button class="key" id="restart" type="button">Restart</button>
   <div class="menu" id="menu" hidden>
     <h2>Level</h2>
     <div class="chips" id="menu-level"></div>
@@ -699,6 +701,14 @@ function init() {
       renderMenu();
     });
     document.getElementById('menu-level').appendChild(b);
+  });
+
+  document.getElementById('restart').addEventListener('click', function () {
+    if (filled(game) > 0 && !confirm('Clear every pipe and start this puzzle over?')) return;
+    game = newGame(game);
+    drawing = null;
+    playing = true;
+    paint();
   });
 
   newBtn.addEventListener('click', function () {
