@@ -156,6 +156,58 @@ button.key.on { background: var(--sel); border-color: var(--accent); }
   display: flex;
   justify-content: center;
 }
+/* Back leaves for the main menu and New throws the game away; the gameplay
+ * buttons sit in the bar below the board. */
+.actions {
+  position: relative;
+  flex: none;
+  width: var(--width);
+  display: grid;
+  grid-template-columns: auto auto auto;
+  justify-content: start;
+  gap: 6px;
+}
+.actions button.key { padding-inline: 14px; }
+.sep { width: 1px; margin: 6px 3px; background: var(--btnline); border-radius: 1px; }
+/* The New menu hangs below its button. */
+.menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 10px);
+  z-index: 5;
+  width: min(100%, 300px);
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--btnline);
+  border-radius: 14px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .28);
+}
+/* Without this, display: grid above would beat the hidden attribute. */
+.menu[hidden] { display: none; }
+.menu h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.chip {
+  font: inherit;
+  font-size: 14px;
+  min-height: 38px;
+  border: 1px solid var(--btnline);
+  border-radius: 8px;
+  background: var(--btn);
+  color: var(--ink);
+  cursor: pointer;
+}
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.menu p { margin: 0; font-size: 14px; font-weight: 600; text-align: center; }
+.menu .go { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
 .overlay {
   position: fixed;
   inset: 0;
@@ -186,7 +238,6 @@ button.key.on { background: var(--sel); border-color: var(--accent); }
 .overlay strong { font-size: 28px; line-height: 1.1; color: var(--accent); }
 .overlay p { margin: 0; color: var(--muted); }
 .overlay p#ov-best { color: var(--ink); font-weight: 600; white-space: pre; }
-.levels { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 @keyframes pop {
   from { opacity: 0; transform: scale(.85); }
   to { opacity: 1; transform: none; }
@@ -195,10 +246,23 @@ button.key.on { background: var(--sel); border-color: var(--accent); }
 </head>
 <body>
 <header>
-  <a class="key" href="../" aria-label="Main menu">←</a>
   <h1>Minesweeper</h1>
   <span class="meta" id="meta"></span>
 </header>
+<div class="actions">
+  <a class="key" href="../" aria-label="Main menu">←</a>
+  <span class="sep" aria-hidden="true"></span>
+  <button class="key" id="new" type="button" aria-haspopup="true" aria-expanded="false">New</button>
+  <div class="menu" id="menu" hidden>
+    <h2>Level</h2>
+    <div class="chips" id="menu-level"></div>
+    <p id="menu-best"></p>
+    <div class="go">
+      <button class="key" id="menu-cancel" type="button">Cancel</button>
+      <button class="key primary" id="menu-start" type="button">Start</button>
+    </div>
+  </div>
+</div>
 <div class="stage">
   <div class="board" id="board"></div>
 </div>
@@ -210,7 +274,7 @@ button.key.on { background: var(--sel); border-color: var(--accent); }
     <strong id="ov-title"></strong>
     <p id="ov-text"></p>
     <p id="ov-best"></p>
-    <div class="levels" id="levels"></div>
+    <button class="key" id="dismiss" type="button">Back to the board</button>
   </div>
 </div>
 <script id="app">
@@ -375,21 +439,23 @@ function init() {
   var titleEl = document.getElementById('ov-title');
   var textEl = document.getElementById('ov-text');
   var bestEl = document.getElementById('ov-best');
-  var levelsEl = document.getElementById('levels');
+  var dismissBtn = document.getElementById('dismiss');
+  var menuEl = document.getElementById('menu');
+  var newBtn = document.getElementById('new');
   var metaEl = document.getElementById('meta');
 
   /* How long a press has to last to plant a flag instead. */
   var HOLD_MS = 350;
-  /* How long the uncovered field stays in view before the popup. */
-  var REVEAL_MS = 1200;
 
   var rand = rng(Math.floor(Math.random() * 4294967296));
   var progress = load() || { best: {} };
   var level = LEVELS[0];
   var game = newGame(level);
   var cellEls = [];
-  /* Whether a game is under way; not while the popup is up. */
+  /* Whether a game is under way; not once it has been won or lost. */
   var playing = false;
+  /* The level picked in the New menu, until Start. */
+  var choice = level;
   var flagMode = false;
   var started = 0;
   var ticker = null;
@@ -409,10 +475,6 @@ function init() {
     } catch (e) {
       return null;
     }
-  }
-
-  function wait(ms) {
-    return new Promise(function (done) { setTimeout(done, ms); });
   }
 
   function elapsed() {
@@ -490,7 +552,7 @@ function init() {
     showMeta();
   }
 
-  async function finish(won) {
+  function finish(won) {
     playing = false;
     clearInterval(ticker);
     var time = elapsed();
@@ -500,9 +562,8 @@ function init() {
     }
     paint(true);
     showMeta();
-    await wait(REVEAL_MS);
     if (!won) {
-      overlay('Boom!', 'You hit a mine. Pick a level to try again.');
+      overlay('Boom!', 'You hit a mine.', 'Back to the board');
       return;
     }
     var text = level.name + ' cleared in ' + formatTime(time) + '.';
@@ -512,7 +573,7 @@ function init() {
       progress.best[level.name] = time;
       save();
     }
-    overlay('Cleared!', text);
+    overlay('Cleared!', text, 'Back to the board');
   }
 
   function start(next) {
@@ -520,12 +581,13 @@ function init() {
     game = newGame(level);
     started = 0;
     clearInterval(ticker);
+    playing = true;
     buildBoard();
     paint(false);
     showMeta();
   }
 
-  function overlay(title, text) {
+  function overlay(title, text, button) {
     titleEl.textContent = title;
     textEl.textContent = text;
     bestEl.textContent = LEVELS.map(function (l) {
@@ -533,23 +595,73 @@ function init() {
       if (best === undefined) return l.name + ': —';
       return l.name + ': ' + formatTime(best);
     }).join('\n');
+    dismissBtn.textContent = button;
     overlayEl.hidden = false;
-    var current = levelsEl.querySelector('[data-level="' + level.name + '"]');
-    current.focus();
+    dismissBtn.focus();
+  }
+
+  dismissBtn.addEventListener('click', function () { overlayEl.hidden = true; });
+
+  function renderMenu() {
+    menuEl.querySelectorAll('.chip').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.level === choice.name));
+    });
+    var best = progress.best[choice.name];
+    if (best === undefined) {
+      document.getElementById('menu-best').textContent = 'No best yet';
+    } else {
+      document.getElementById('menu-best').textContent = 'Best: ' + formatTime(best);
+    }
+  }
+
+  function openMenu() {
+    choice = level;
+    renderMenu();
+    menuEl.hidden = false;
+    newBtn.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeMenu() {
+    menuEl.hidden = true;
+    newBtn.setAttribute('aria-expanded', 'false');
   }
 
   LEVELS.forEach(function (l) {
-    var btn = document.createElement('button');
-    btn.className = 'key';
-    btn.type = 'button';
-    btn.textContent = l.name;
-    btn.dataset.level = l.name;
-    btn.addEventListener('click', function () {
-      overlayEl.hidden = true;
-      start(l);
-      playing = true;
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip';
+    b.textContent = l.name;
+    b.dataset.level = l.name;
+    b.addEventListener('click', function () {
+      choice = l;
+      renderMenu();
     });
-    levelsEl.appendChild(btn);
+    document.getElementById('menu-level').appendChild(b);
+  });
+
+  newBtn.addEventListener('click', function () {
+    if (menuEl.hidden) {
+      openMenu();
+    } else {
+      closeMenu();
+    }
+  });
+  document.getElementById('menu-cancel').addEventListener('click', closeMenu);
+  document.getElementById('menu-start').addEventListener('click', function () {
+    closeMenu();
+    var underWay = playing && game.mines !== null;
+    if (underWay && !confirm('Start a new game? This one will be lost.')) return;
+    start(choice);
+  });
+  /* A tap anywhere outside the menu puts it away, as a popup should. */
+  document.addEventListener('click', function (ev) {
+    if (menuEl.hidden) return;
+    if (menuEl.contains(ev.target)) return;
+    if (newBtn.contains(ev.target)) return;
+    closeMenu();
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') closeMenu();
   });
 
   function setMode(on) {
@@ -624,7 +736,7 @@ function init() {
   boardEl.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
 
   start(level);
-  overlay('Minesweeper', 'Open every cell that has no mine. A number tells how many mines touch that cell. Hold a cell, or use 🚩 Flag, to mark a mine.');
+  overlay('Minesweeper', 'Open every cell that has no mine. A number tells how many mines touch that cell. Hold a cell, or use 🚩 Flag, to mark a mine.', 'Play');
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {
