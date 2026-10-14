@@ -4,7 +4,8 @@
  * cluster of bubbles with one flying up to it for Bubbles, and a corner of a
  * minefield with a flag on its one mine for Minesweeper, and a grid filled
  * with three connected pipes for Pipe Connect, and a grid of blue and orange
- * squares for Takuzu.
+ * squares for Takuzu, and rows of bricks with a ball on its way back up from
+ * the paddle for Breakout, and a patch of 2 and 4 tiles for 2048.
  * Each icon is a scene over the unit square, supersampled for smooth
  * edges. Everything sits inside the maskable safe zone (radius 0.4). */
 import { deflateSync } from 'node:zlib';
@@ -394,7 +395,54 @@ function takuzu() {
   };
 }
 
-const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper], ['pipes/', pipes], ['takuzu/', takuzu]];
+/* --- breakout: rows of bricks with a gap, a ball and the paddle -------- */
+
+function breakout() {
+  const width = 0.13;
+  const height = 0.06;
+  const origin = 0.5 - 2 * width;
+  const top = 0.2;
+  /* Row by row: a colour per brick, or null where one has been broken. */
+  const rows = [[BLUE, BLUE, BLUE, BLUE], [PURPLE, null, PURPLE, PURPLE], [ORANGE, null, null, ORANGE]];
+  const ball = [0.46, 0.58];
+  const trail = [[0.5, 0.64], [0.54, 0.7]];
+  return (x, y) => {
+    if (Math.hypot(x - ball[0], y - ball[1]) <= 0.035) return PAPER;
+    if (trail.some(([tx, ty]) => Math.hypot(x - tx, y - ty) <= 0.012)) return mix(BG, PAPER, 0.5);
+    if (inRoundedBox(x - 0.56, y - 0.77, 0.12, 0.022, 0.022)) return BLUE;
+    const r = Math.floor((y - top) / height);
+    const c = Math.floor((x - origin) / width);
+    if (r < 0 || c < 0 || r >= rows.length || c > 3 || rows[r][c] === null) return BG;
+    if (!inRoundedBox(x - origin - (c + 0.5) * width, y - top - (r + 0.5) * height, width / 2 - 0.007, height / 2 - 0.007, 0.01)) return BG;
+    return rows[r][c];
+  };
+}
+
+/* --- 2048: a 3x3 patch with a few numbered tiles ---------------------- */
+
+function twentyFortyEight() {
+  const cell = 0.17;
+  const half = cell * 0.44;
+  const origin = 0.5 - 1.5 * cell;
+  const digitHeight = cell * 0.5;
+  /* Row by row: a digit for a tile, '.' empty. */
+  const board = ['2.4', '.22', '4.2'];
+  return (x, y) => {
+    const r = Math.floor((y - origin) / cell);
+    const c = Math.floor((x - origin) / cell);
+    if (r < 0 || c < 0 || r > 2 || c > 2) return BG;
+    const lx = x - origin - (c + 0.5) * cell;
+    const ly = y - origin - (r + 0.5) * cell;
+    if (!inRoundedBox(lx, ly, half, half, half * 0.3)) return BG;
+    const what = board[r][c];
+    if (what === '.') return mix(BG, PAPER, 0.08);
+    if (inGlyph(what, lx / digitHeight + 0.3, ly / digitHeight + 0.5, 0.1)) return BG;
+    if (what === '2') return PAPER;
+    return ORANGE;
+  };
+}
+
+const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper], ['pipes/', pipes], ['takuzu/', takuzu], ['breakout/', breakout], ['2048/', twentyFortyEight]];
 for (const [dir, scene] of ICONS) {
   for (const size of [192, 512]) {
     const name = `${dir}icon-${size}.png`;

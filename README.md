@@ -8,5 +8,7 @@ Gameslop is a progressive web app full of small games:
 - Minesweeper
 - Pipe Connect (a clone of Flow Free)
 - Takuzu (a.k.a. Binairo)
+- Breakout
+- 2048
 
 I totally vibecoded this. I'm sorry...

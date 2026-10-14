@@ -1,5 +1,5 @@
 /* Cache-first over the whole app, every game included; bump CACHE to ship an update. */
-const CACHE = 'gameslop-v9';
+const CACHE = 'gameslop-v10';
 const FILES = [
   '.', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png',
   'suguru/', 'suguru/index.html', 'suguru/icon-192.png', 'suguru/icon-512.png',
@@ -10,6 +10,8 @@ const FILES = [
   'minesweeper/', 'minesweeper/index.html', 'minesweeper/icon-192.png', 'minesweeper/icon-512.png',
   'pipes/', 'pipes/index.html', 'pipes/icon-192.png', 'pipes/icon-512.png',
   'takuzu/', 'takuzu/index.html', 'takuzu/icon-192.png', 'takuzu/icon-512.png',
+  'breakout/', 'breakout/index.html', 'breakout/icon-192.png', 'breakout/icon-512.png',
+  '2048/', '2048/index.html', '2048/icon-192.png', '2048/icon-512.png',
 ];
 
 self.addEventListener('install', (event) => {

@@ -1,10 +1,8 @@
 # Game ideas
 
 - [ ] Star Battle
-- [ ] 2048
 - [ ] Flappy (a clone of Flappy Bird)
 - [ ] FreeCell
-- [ ] Breakout
 - [ ] Nonograms (a.k.a. Picross), with real pictures
 
 # Implementation ideas

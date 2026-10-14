@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Breakout</title>
+<meta name="description" content="Bounce the ball off your paddle and break every brick.">
+<meta name="theme-color" content="#0f1420">
+<link rel="manifest" href="../manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gameslop">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root {
+  color-scheme: light dark;
+  --width: min(100%, 520px);
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --ink: #1b2130;
+  --muted: #6b7382;
+  --btn: #ffffff;
+  --btnline: #ccd2dd;
+  --sel: #cfe0ff;
+  --accent: #2358c8;
+  --board: #e3e7ee;
+  --g0: #e0454f;
+  --g1: #f08c1c;
+  --g2: #e2bb12;
+  --g3: #2fae5a;
+  --g4: #2f7de0;
+  --g5: #8a4fd6;
+  --g6: #e04ba6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1420;
+    --panel: #161c2b;
+    --ink: #e7ebf3;
+    --muted: #8b95a8;
+    --btn: #1c2334;
+    --btnline: #313a50;
+    --sel: #2b456f;
+    --accent: #79a8ff;
+    --board: #161c2b;
+    --g0: #ff6b6b;
+    --g1: #ffa94d;
+    --g2: #ffd84a;
+    --g3: #4fd17a;
+    --g4: #5c9cff;
+    --g5: #b98cff;
+    --g6: #ff7ac8;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+header {
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+h1 { flex: 1; font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercase; }
+.meta { font-size: 14px; line-height: 1.25; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; white-space: pre; }
+a.key, button.key {
+  font: inherit;
+  background: var(--btn);
+  color: var(--ink);
+  border: 1px solid var(--btnline);
+  border-radius: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+a.key { display: flex; align-items: center; justify-content: center; padding: 0 14px; font-size: 22px; text-decoration: none; }
+button.key { padding: 10px 26px; font-size: 16px; font-weight: 600; }
+button.key.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.key:active { background: var(--sel); }
+/* The stage takes whatever height is left; the script sizes the field to the
+ * largest it can be inside it. Dragging anywhere on it moves the paddle. */
+.stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+.board {
+  display: block;
+  border-radius: 14px;
+  background: var(--board);
+}
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+  background: rgba(8, 12, 22, .45);
+}
+.overlay[hidden] { display: none; }
+.overlay > div {
+  width: min(100%, 340px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 26px 20px;
+  text-align: center;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 18px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .35);
+  animation: pop .3s ease-out;
+}
+.overlay strong { font-size: 28px; line-height: 1.1; color: var(--accent); }
+.overlay p { margin: 0; color: var(--muted); }
+.overlay p#ov-best { color: var(--ink); font-weight: 600; }
+@keyframes pop {
+  from { opacity: 0; transform: scale(.85); }
+  to { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <a class="key" href="../" aria-label="Main menu">←</a>
+  <h1>Breakout</h1>
+  <span class="meta" id="meta"></span>
+</header>
+<div class="stage" id="stage">
+  <canvas class="board" id="board"></canvas>
+</div>
+<div class="overlay" id="overlay">
+  <div>
+    <strong id="ov-title"></strong>
+    <p id="ov-text"></p>
+    <p id="ov-best"></p>
+    <button class="key primary" id="ov-go" type="button">Play</button>
+  </div>
+</div>
+<script id="app">
+'use strict';
+
+/* ------------------------------------------------------------------ *
+ * Rules
+ * ------------------------------------------------------------------ */
+
+/* The field is WIDTH by HEIGHT, in brick widths, with y going down. Bricks sit
+ * in a grid of COLS columns from TOP down, each { r, c, hits }: hits is how
+ * many more times it must be hit to break. The paddle's top is at PADDLE_Y and
+ * world.paddle is the x of its middle. A ball that falls past the bottom is
+ * lost. */
+var WIDTH = 8;
+var HEIGHT = 12;
+var COLS = 8;
+var MAX_ROWS = 8;
+var TOP = 1;
+var BRICK_H = 0.45;
+var PADDLE_Y = 11;
+var PADDLE_W = 1.6;
+var PADDLE_H = 0.22;
+var RADIUS = 0.14;
+/* Off the paddle's edge, the ball leaves this far from straight up. */
+var MAX_ANGLE = Math.PI / 3;
+/* The ball moves FIRST_SPEED widths a second on level 1, SPEEDUP faster each
+ * level after, up to MAX_SPEED. It moves at most STEP at a time. */
+var FIRST_SPEED = 8;
+var SPEEDUP = 0.5;
+var MAX_SPEED = 13;
+var STEP = 0.05;
+/* How likely a spot in a new level holds a brick. */
+var FILL = 0.75;
+var LIVES = 3;
+/* Every hit on a brick scores POINTS. */
+var POINTS = 10;
+var STORAGE_KEY = 'breakout.v1';
+
+function rng(seed) {
+  var a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    var t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function speedFor(level) {
+  return Math.min(MAX_SPEED, FIRST_SPEED + SPEEDUP * (level - 1));
+}
+
+/* A mirrored pattern of bricks: a row more each level, and more tough ones. */
+function layout(level, rand) {
+  var rows = Math.min(MAX_ROWS, 3 + level);
+  var tough = Math.min(0.6, (level - 1) * 0.12);
+  var bricks = [];
+  while (bricks.length < COLS) {
+    bricks = [];
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < COLS / 2; c++) {
+        if (rand() >= FILL) continue;
+        var hits = 1;
+        if (rand() < tough) hits = 2;
+        if (level >= 4 && rand() < tough / 2) hits = 3;
+        bricks.push({ r: r, c: c, hits: hits }, { r: r, c: COLS - 1 - c, hits: hits });
+      }
+    }
+  }
+  return bricks;
+}
+
+function clampPaddle(x) {
+  return Math.max(PADDLE_W / 2, Math.min(WIDTH - PADDLE_W / 2, x));
+}
+
+/* The ball's velocity off the paddle at offset, from -1 at its left edge to 1
+ * at its right: straight up from the middle, slanting more towards the edges. */
+function bounce(offset, speed) {
+  var angle = Math.max(-1, Math.min(1, offset)) * MAX_ANGLE;
+  return { vx: speed * Math.sin(angle), vy: -speed * Math.cos(angle) };
+}
+
+/* A ball resting on the paddle, waiting to be launched. */
+function serve(paddle) {
+  return { x: paddle, y: PADDLE_Y - RADIUS, vx: 0, vy: 0 };
+}
+
+function newWorld(level, rand) {
+  var paddle = WIDTH / 2;
+  return { bricks: layout(level, rand), paddle: paddle, ball: serve(paddle) };
+}
+
+/* The index of a brick the ball touches when at x, y, or -1. */
+function brickAt(bricks, x, y) {
+  for (var i = 0; i < bricks.length; i++) {
+    var b = bricks[i];
+    var top = TOP + b.r * BRICK_H;
+    if (x + RADIUS > b.c && x - RADIUS < b.c + 1 && y + RADIUS > top && y - RADIUS < top + BRICK_H) return i;
+  }
+  return -1;
+}
+
+/* The bricks after the one at i is hit: a hit less, or gone. */
+function strike(bricks, i) {
+  var b = bricks[i];
+  var rest = bricks.slice(0, i).concat(bricks.slice(i + 1));
+  if (b.hits === 1) return rest;
+  rest.splice(i, 0, { r: b.r, c: b.c, hits: b.hits - 1 });
+  return rest;
+}
+
+/* The world dt seconds on: the ball moves a step at a time, across then down,
+ * and turns back on whatever it runs into on the way. Also the bricks it hit,
+ * as they were before, and whether it fell past the paddle. */
+function advance(world, dt) {
+  var ball = { x: world.ball.x, y: world.ball.y, vx: world.ball.vx, vy: world.ball.vy };
+  var bricks = world.bricks;
+  var struck = [];
+  var speed = Math.hypot(ball.vx, ball.vy);
+  var steps = Math.max(1, Math.ceil(speed * dt / STEP));
+  for (var k = 0; k < steps; k++) {
+    var x = ball.x + ball.vx * dt / steps;
+    if (x < RADIUS) {
+      x = 2 * RADIUS - x;
+      ball.vx = Math.abs(ball.vx);
+    } else if (x > WIDTH - RADIUS) {
+      x = 2 * (WIDTH - RADIUS) - x;
+      ball.vx = -Math.abs(ball.vx);
+    }
+    var hit = brickAt(bricks, x, ball.y);
+    if (hit >= 0) {
+      struck.push(bricks[hit]);
+      bricks = strike(bricks, hit);
+      ball.vx = -ball.vx;
+    } else {
+      ball.x = x;
+    }
+    var y = ball.y + ball.vy * dt / steps;
+    if (y < RADIUS) {
+      y = 2 * RADIUS - y;
+      ball.vy = Math.abs(ball.vy);
+    }
+    hit = brickAt(bricks, ball.x, y);
+    var onPaddle = ball.vy > 0 && ball.y + RADIUS <= PADDLE_Y && y + RADIUS >= PADDLE_Y
+      && Math.abs(ball.x - world.paddle) <= PADDLE_W / 2 + RADIUS;
+    if (hit >= 0) {
+      struck.push(bricks[hit]);
+      bricks = strike(bricks, hit);
+      ball.vy = -ball.vy;
+    } else if (onPaddle) {
+      var off = bounce((ball.x - world.paddle) / (PADDLE_W / 2), speed);
+      ball.vx = off.vx;
+      ball.vy = off.vy;
+      ball.y = PADDLE_Y - RADIUS;
+    } else {
+      ball.y = y;
+    }
+    if (ball.y - RADIUS > HEIGHT) break;
+  }
+  return {
+    world: { bricks: bricks, paddle: world.paddle, ball: ball },
+    struck: struck,
+    lost: ball.y - RADIUS > HEIGHT
+  };
+}
+
+function isCleared(world) {
+  return world.bricks.length === 0;
+}
+
+/* progress holds the best score. */
+function serialize(progress) {
+  return JSON.stringify({ version: 1, best: progress.best });
+}
+
+function deserialize(text) {
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+  if (!data || data.version !== 1) return null;
+  if (!Number.isInteger(data.best) || data.best < 0) return null;
+  return { best: data.best };
+}
+
+/* ------------------------------------------------------------------ *
+ * UI
+ * ------------------------------------------------------------------ */
+
+function init() {
+  var stageEl = document.getElementById('stage');
+  var canvas = document.getElementById('board');
+  var ctx = canvas.getContext('2d');
+  var overlayEl = document.getElementById('overlay');
+  var titleEl = document.getElementById('ov-title');
+  var textEl = document.getElementById('ov-text');
+  var goBtn = document.getElementById('ov-go');
+  var bestEl = document.getElementById('ov-best');
+  var metaEl = document.getElementById('meta');
+
+  /* The paddle moves STEER widths a second on the keyboard. */
+  var STEER = 10;
+  var BREAK_MS = 220;
+  /* A launch goes up at a slant of up to this much of the paddle's. */
+  var LAUNCH = 0.3;
+  var GAP = 0.05;
+
+  var rand = rng(Math.floor(Math.random() * 4294967296));
+  var progress = load() || { best: 0 };
+  var world = null;
+  var level = 1;
+  var score = 0;
+  var lives = LIVES;
+  /* Whether the ball rests on the paddle, waiting to be launched. */
+  var held = true;
+  /* Whether a game is under way; not while the popup is up. */
+  var running = false;
+  var drag = null;
+  var keys = { left: false, right: false };
+  var last = 0;
+  /* Breaking bricks, drawn until they are done. */
+  var effects = [];
+  var scale = 1;
+  var colours = {};
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, serialize(progress));
+    } catch (e) {
+      /* private mode / quota: the game still works, it just forgets. */
+    }
+  }
+
+  function load() {
+    try {
+      return deserialize(localStorage.getItem(STORAGE_KEY));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function readColours() {
+    var style = getComputedStyle(document.documentElement);
+    var get = function (name) { return style.getPropertyValue(name).trim(); };
+    colours = {
+      bricks: [0, 1, 2, 3, 4, 5, 6].map(function (i) { return get('--g' + i); }),
+      paddle: get('--accent'),
+      ball: get('--ink'),
+      text: get('--muted')
+    };
+  }
+
+  function resize() {
+    var rect = stageEl.getBoundingClientRect();
+    scale = Math.min(rect.width / WIDTH, rect.height / HEIGHT);
+    var dpr = window.devicePixelRatio || 1;
+    canvas.style.width = WIDTH * scale + 'px';
+    canvas.style.height = HEIGHT * scale + 'px';
+    canvas.width = Math.round(WIDTH * scale * dpr);
+    canvas.height = Math.round(HEIGHT * scale * dpr);
+    draw(performance.now());
+  }
+
+  function brick(b, grow, alpha) {
+    var x = b.c + GAP - grow;
+    var y = TOP + b.r * BRICK_H + GAP - grow;
+    var w = 1 - 2 * GAP + 2 * grow;
+    var h = BRICK_H - 2 * GAP + 2 * grow;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = colours.bricks[b.r % colours.bricks.length];
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 0.08);
+    ctx.fill();
+    /* A tough brick has a ring for every extra hit it needs. */
+    ctx.strokeStyle = 'rgba(255, 255, 255, .7)';
+    ctx.lineWidth = 0.04;
+    for (var k = 1; k < b.hits; k++) {
+      var inset = 0.07 * k;
+      ctx.strokeRect(x + inset, y + inset, w - 2 * inset, h - 2 * inset);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function draw(now) {
+    var dpr = canvas.width / (WIDTH * scale);
+    ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+    ctx.clearRect(0, 0, WIDTH, HEIGHT);
+    if (world === null) return;
+    world.bricks.forEach(function (b) { brick(b, 0, 1); });
+    effects.forEach(function (e) {
+      var t = (now - e.start) / BREAK_MS;
+      brick(e.brick, 0.15 * t, 1 - t);
+    });
+    ctx.fillStyle = colours.paddle;
+    ctx.beginPath();
+    ctx.roundRect(world.paddle - PADDLE_W / 2, PADDLE_Y, PADDLE_W, PADDLE_H, PADDLE_H / 2);
+    ctx.fill();
+    ctx.fillStyle = colours.ball;
+    ctx.beginPath();
+    ctx.arc(world.ball.x, world.ball.y, RADIUS, 0, 2 * Math.PI);
+    ctx.fill();
+    if (held && running) {
+      ctx.fillStyle = colours.text;
+      ctx.textAlign = 'center';
+      ctx.font = '600 0.5px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText('Level ' + level, WIDTH / 2, HEIGHT * 0.62);
+      ctx.font = '0.36px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText('Tap to launch', WIDTH / 2, HEIGHT * 0.62 + 0.6);
+    }
+  }
+
+  function showMeta() {
+    metaEl.textContent = 'Score ' + score + '\nLevel ' + level + ' · Lives ' + lives;
+  }
+
+  function movePaddle(x) {
+    var paddle = clampPaddle(x);
+    var ball = world.ball;
+    if (held) ball = serve(paddle);
+    world = { bricks: world.bricks, paddle: paddle, ball: ball };
+  }
+
+  function launch() {
+    if (!running || !held) return;
+    held = false;
+    var v = bounce((rand() * 2 - 1) * LAUNCH, speedFor(level));
+    world = { bricks: world.bricks, paddle: world.paddle, ball: { x: world.ball.x, y: world.ball.y, vx: v.vx, vy: v.vy } };
+  }
+
+  function update(dt, now) {
+    effects = effects.filter(function (e) { return now - e.start < BREAK_MS; });
+    var steer = 0;
+    if (keys.left) steer -= STEER * dt;
+    if (keys.right) steer += STEER * dt;
+    if (steer !== 0) movePaddle(world.paddle + steer);
+    if (held) return;
+    var result = advance(world, dt);
+    world = result.world;
+    result.struck.forEach(function (b) {
+      score += POINTS;
+      if (b.hits === 1) effects.push({ brick: b, start: now });
+    });
+    if (result.lost) {
+      lives--;
+      held = true;
+      movePaddle(world.paddle);
+      if (lives === 0) finish();
+    } else if (isCleared(world)) {
+      level++;
+      held = true;
+      world = newWorld(level, rand);
+    }
+    showMeta();
+  }
+
+  function frame(now) {
+    if (!running) return;
+    var dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    update(dt, now);
+    draw(now);
+    if (running) requestAnimationFrame(frame);
+  }
+
+  function finish() {
+    running = false;
+    var text = 'You scored ' + score + ' points and reached level ' + level + '.';
+    if (score > progress.best) {
+      if (progress.best > 0) text += ' New best!';
+      progress.best = score;
+      save();
+    }
+    overlay('Game over', text, 'Play again');
+  }
+
+  function newGame() {
+    level = 1;
+    score = 0;
+    lives = LIVES;
+    held = true;
+    effects = [];
+    world = newWorld(level, rand);
+    showMeta();
+    draw(performance.now());
+  }
+
+  function overlay(title, text, button) {
+    titleEl.textContent = title;
+    textEl.textContent = text;
+    goBtn.textContent = button;
+    if (progress.best > 0) {
+      bestEl.textContent = 'Best: ' + progress.best + ' points';
+    } else {
+      bestEl.textContent = 'No best yet';
+    }
+    overlayEl.hidden = false;
+    goBtn.focus();
+  }
+
+  function start() {
+    if (running) return;
+    overlayEl.hidden = true;
+    newGame();
+    running = true;
+    last = performance.now();
+    requestAnimationFrame(frame);
+  }
+
+  goBtn.addEventListener('click', start);
+
+  /* Drag anywhere to move the paddle; let go to launch the ball. */
+  stageEl.addEventListener('pointerdown', function (ev) {
+    if (!running) return;
+    drag = { x: ev.clientX, paddle: world.paddle };
+    stageEl.setPointerCapture(ev.pointerId);
+  });
+  stageEl.addEventListener('pointermove', function (ev) {
+    if (!drag) return;
+    movePaddle(drag.paddle + (ev.clientX - drag.x) / scale);
+  });
+  stageEl.addEventListener('pointerup', function () {
+    if (!drag) return;
+    drag = null;
+    launch();
+  });
+  stageEl.addEventListener('pointercancel', function () {
+    drag = null;
+  });
+
+  var LEFT = ['ArrowLeft', 'a', 'A'];
+  var RIGHT = ['ArrowRight', 'd', 'D'];
+  var LAUNCH_KEYS = [' ', 'ArrowUp', 'w', 'W'];
+  document.addEventListener('keydown', function (ev) {
+    if (LEFT.indexOf(ev.key) >= 0) keys.left = true;
+    if (RIGHT.indexOf(ev.key) >= 0) keys.right = true;
+    if (running && LAUNCH_KEYS.indexOf(ev.key) >= 0) {
+      ev.preventDefault();
+      launch();
+    }
+  });
+  document.addEventListener('keyup', function (ev) {
+    if (LEFT.indexOf(ev.key) >= 0) keys.left = false;
+    if (RIGHT.indexOf(ev.key) >= 0) keys.right = false;
+  });
+
+  readColours();
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+    readColours();
+    draw(performance.now());
+  });
+  new ResizeObserver(resize).observe(stageEl);
+  newGame();
+  overlay('Breakout', 'Drag to move the paddle and let go to launch. Break every brick to go to the next level; ringed bricks take more hits. Where the ball hits the paddle decides where it goes. You have ' + LIVES + ' lives.', 'Play');
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('../sw.js').catch(function () {
+        /* file:// or no HTTPS: the app runs fine, it just is not installable. */
+      });
+    });
+  }
+}
+
+if (typeof document !== 'undefined') init();
+</script>
+</body>
+</html>

@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>2048</title>
+<meta name="description" content="Slide the tiles and merge equal numbers to reach 2048.">
+<meta name="theme-color" content="#0f1420">
+<link rel="manifest" href="../manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gameslop">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root {
+  color-scheme: light dark;
+  --width: min(100%, 520px);
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --ink: #1b2130;
+  --muted: #6b7382;
+  --btn: #ffffff;
+  --btnline: #ccd2dd;
+  --sel: #cfe0ff;
+  --accent: #2358c8;
+  --board: #e3e7ee;
+  --cell: #d6dbe5;
+  --on: #ffffff;
+  --t2: #ffffff;
+  --t4: #fbeed3;
+  --g0: #e0454f;
+  --g1: #f08c1c;
+  --g2: #e2bb12;
+  --g3: #2fae5a;
+  --g4: #2f7de0;
+  --g5: #8a4fd6;
+  --g6: #e04ba6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1420;
+    --panel: #161c2b;
+    --ink: #e7ebf3;
+    --muted: #8b95a8;
+    --btn: #1c2334;
+    --btnline: #313a50;
+    --sel: #2b456f;
+    --accent: #79a8ff;
+    --board: #161c2b;
+    --cell: #1c2334;
+    --on: #0f1420;
+    --t2: #2b3346;
+    --t4: #3d3a3a;
+    --g0: #ff6b6b;
+    --g1: #ffa94d;
+    --g2: #ffd84a;
+    --g3: #4fd17a;
+    --g4: #5c9cff;
+    --g5: #b98cff;
+    --g6: #ff7ac8;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+header {
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+h1 { flex: 1; font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercase; }
+.meta { font-size: 14px; line-height: 1.25; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; white-space: pre; }
+a.key, button.key {
+  font: inherit;
+  background: var(--btn);
+  color: var(--ink);
+  border: 1px solid var(--btnline);
+  border-radius: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+a.key { display: flex; align-items: center; justify-content: center; padding: 0 14px; font-size: 22px; text-decoration: none; }
+button.key { padding: 10px 26px; font-size: 16px; font-weight: 600; }
+header button.key { padding: 10px 16px; }
+button.key.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.key:active { background: var(--sel); }
+button.key[hidden] { display: none; }
+/* The stage takes whatever height is left, and the board is the largest
+ * square that fits in it. Swiping anywhere on it moves the tiles. */
+.stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+  touch-action: none;
+}
+.board {
+  position: relative;
+  width: min(100cqw, 100cqh);
+  aspect-ratio: 1;
+  border-radius: 14px;
+  background: var(--board);
+}
+.grid { position: absolute; inset: 1%; }
+/* A tile is one cell, moved into place with translate (percentages of its own
+ * size, so one cell each); the span inside is the drawn tile. The empty cells
+ * underneath are tiles too, without a number. */
+.tile {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 25%;
+  height: 25%;
+  transition: transform .1s ease-in-out;
+}
+.tile span {
+  position: absolute;
+  inset: 4%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10%;
+  background: var(--colour, var(--cell));
+  color: var(--text, var(--on));
+  font-weight: 700;
+  font-size: 11cqmin;
+  font-variant-numeric: tabular-nums;
+}
+.tile.d3 span { font-size: 9cqmin; }
+.tile.d4 span { font-size: 7cqmin; }
+.tile.d5 span { font-size: 5.5cqmin; }
+.tile.new span { animation: grow .15s ease-out; }
+.tile.merged span { animation: bump .15s ease-out; }
+.tile.on { z-index: 1; }
+.v2 { --colour: var(--t2); --text: var(--ink); }
+.v4 { --colour: var(--t4); --text: var(--ink); }
+.v8 { --colour: var(--g2); --text: #1b2130; }
+.v16 { --colour: var(--g1); }
+.v32 { --colour: var(--g0); }
+.v64 { --colour: var(--g6); }
+.v128 { --colour: var(--g5); }
+.v256 { --colour: var(--g4); }
+.v512 { --colour: var(--g3); }
+.v1024 { --colour: var(--accent); }
+.big { --colour: var(--ink); --text: var(--bg); }
+@keyframes grow {
+  from { transform: scale(0); }
+  to { transform: none; }
+}
+@keyframes bump {
+  50% { transform: scale(1.12); }
+}
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+  background: rgba(8, 12, 22, .45);
+}
+.overlay[hidden] { display: none; }
+.overlay > div {
+  width: min(100%, 340px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 26px 20px;
+  text-align: center;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 18px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .35);
+  animation: pop .3s ease-out;
+}
+.overlay strong { font-size: 28px; line-height: 1.1; color: var(--accent); }
+.overlay p { margin: 0; color: var(--muted); }
+.overlay p#ov-best { color: var(--ink); font-weight: 600; }
+@keyframes pop {
+  from { opacity: 0; transform: scale(.85); }
+  to { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <a class="key" href="../" aria-label="Main menu">←</a>
+  <h1>2048</h1>
+  <span class="meta" id="meta"></span>
+  <button class="key" id="new" type="button">New</button>
+</header>
+<div class="stage" id="stage">
+  <div class="board"><div class="grid" id="grid"></div></div>
+</div>
+<div class="overlay" id="overlay">
+  <div>
+    <strong id="ov-title"></strong>
+    <p id="ov-text"></p>
+    <p id="ov-best"></p>
+    <button class="key primary" id="ov-go" type="button">Play</button>
+    <button class="key" id="ov-other" type="button"></button>
+  </div>
+</div>
+<script id="app">
+'use strict';
+
+/* ------------------------------------------------------------------ *
+ * Rules
+ * ------------------------------------------------------------------ */
+
+/* The board is SIZE x SIZE cells, row by row, each 0 when empty or the number
+ * on its tile. A new tile is a 4 one time in FOUR_IN, a 2 otherwise. */
+var SIZE = 4;
+var WIN = 2048;
+var FOUR_IN = 10;
+/* No tile can go beyond this: there are only SIZE * SIZE cells to build it. */
+var MAX_TILE = 131072;
+var DIRECTIONS = ['left', 'right', 'up', 'down'];
+var STORAGE_KEY = '2048.v1';
+
+function rng(seed) {
+  var a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    var t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* The cells of every row or column, each listed from the side the tiles move
+ * towards. */
+function linesFor(direction) {
+  var lines = [];
+  for (var k = 0; k < SIZE; k++) {
+    var line = [];
+    for (var j = 0; j < SIZE; j++) {
+      if (direction === 'left' || direction === 'right') {
+        line.push(k * SIZE + j);
+      } else {
+        line.push(j * SIZE + k);
+      }
+    }
+    if (direction === 'right' || direction === 'down') line.reverse();
+    lines.push(line);
+  }
+  return lines;
+}
+
+/* Slides every tile as far as it goes towards direction. Two equal tiles that
+ * meet merge into one, at most once per move. Also where each tile went, as
+ * { from, to } cells, the cells that got a merged tile, and the points
+ * scored: the sum of the merged tiles. */
+function move(board, direction) {
+  var next = board.slice();
+  var slides = [];
+  var merged = [];
+  var score = 0;
+  linesFor(direction).forEach(function (line) {
+    var placed = [];
+    var mergeable = false;
+    line.forEach(function (from) {
+      var value = board[from];
+      if (value === 0) return;
+      if (mergeable && placed[placed.length - 1] === value) {
+        placed[placed.length - 1] = value * 2;
+        score += value * 2;
+        merged.push(line[placed.length - 1]);
+        mergeable = false;
+      } else {
+        placed.push(value);
+        mergeable = true;
+      }
+      slides.push({ from: from, to: line[placed.length - 1] });
+    });
+    line.forEach(function (cell, k) {
+      if (k < placed.length) {
+        next[cell] = placed[k];
+      } else {
+        next[cell] = 0;
+      }
+    });
+  });
+  var moved = slides.some(function (s) { return s.from !== s.to; });
+  return { board: next, moved: moved, slides: slides, merged: merged, score: score };
+}
+
+/* Puts a new tile on a random empty cell. Also which cell that is, or -1 when
+ * the board is full. */
+function spawn(board, rand) {
+  var empty = [];
+  board.forEach(function (value, i) {
+    if (value === 0) empty.push(i);
+  });
+  if (empty.length === 0) return { board: board, cell: -1 };
+  var cell = empty[Math.floor(rand() * empty.length)];
+  var next = board.slice();
+  next[cell] = 2;
+  if (rand() * FOUR_IN < 1) next[cell] = 4;
+  return { board: next, cell: cell };
+}
+
+function newBoard(rand) {
+  var board = [];
+  for (var i = 0; i < SIZE * SIZE; i++) board.push(0);
+  return spawn(spawn(board, rand).board, rand).board;
+}
+
+function canMove(board) {
+  return DIRECTIONS.some(function (direction) { return move(board, direction).moved; });
+}
+
+function hasWon(board) {
+  return board.some(function (value) { return value >= WIN; });
+}
+
+function isTile(value) {
+  return value === 0 || (Number.isInteger(value) && value >= 2 && value <= MAX_TILE && (value & (value - 1)) === 0);
+}
+
+/* progress holds the best score and the game under way, if any: its board,
+ * its score, and whether the player already reached WIN and kept going. */
+function serialize(progress) {
+  return JSON.stringify({ version: 1, best: progress.best, game: progress.game });
+}
+
+function deserialize(text) {
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+  if (!data || data.version !== 1) return null;
+  if (!Number.isInteger(data.best) || data.best < 0) return null;
+  var game = data.game;
+  if (game === null) return { best: data.best, game: null };
+  if (!game || !Array.isArray(game.board) || game.board.length !== SIZE * SIZE) return null;
+  if (!game.board.every(isTile)) return null;
+  if (!Number.isInteger(game.score) || game.score < 0) return null;
+  if (typeof game.won !== 'boolean') return null;
+  return { best: data.best, game: { board: game.board, score: game.score, won: game.won } };
+}
+
+/* ------------------------------------------------------------------ *
+ * UI
+ * ------------------------------------------------------------------ */
+
+function init() {
+  var stageEl = document.getElementById('stage');
+  var gridEl = document.getElementById('grid');
+  var overlayEl = document.getElementById('overlay');
+  var titleEl = document.getElementById('ov-title');
+  var textEl = document.getElementById('ov-text');
+  var goBtn = document.getElementById('ov-go');
+  var otherBtn = document.getElementById('ov-other');
+  var bestEl = document.getElementById('ov-best');
+  var metaEl = document.getElementById('meta');
+  var newBtn = document.getElementById('new');
+
+  var SLIDE_MS = 100;
+  /* A swipe counts once it has gone this far, in px. */
+  var SWIPE = 24;
+  var KEYS = {
+    ArrowLeft: 'left', a: 'left', A: 'left',
+    ArrowRight: 'right', d: 'right', D: 'right',
+    ArrowUp: 'up', w: 'up', W: 'up',
+    ArrowDown: 'down', s: 'down', S: 'down'
+  };
+
+  var rand = rng(Math.floor(Math.random() * 4294967296));
+  var progress = load() || { best: 0, game: null };
+  /* The tile element on each cell, or null, in step with game.board. */
+  var els = [];
+  /* Whether a game is under way; not while the popup is up. */
+  var playing = false;
+  var busy = false;
+  /* A move made while the last one is still sliding, to make right after. */
+  var pending = null;
+  var press = null;
+  var onGo = null;
+  var onOther = null;
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, serialize(progress));
+    } catch (e) {
+      /* private mode / quota: the game still works, it just forgets. */
+    }
+  }
+
+  function load() {
+    try {
+      return deserialize(localStorage.getItem(STORAGE_KEY));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function wait(ms) {
+    return new Promise(function (done) { setTimeout(done, ms); });
+  }
+
+  function place(el, cell) {
+    el.style.transform = 'translate(' + (cell % SIZE) * 100 + '%, ' + Math.floor(cell / SIZE) * 100 + '%)';
+  }
+
+  function makeTile(cell) {
+    var el = document.createElement('div');
+    el.className = 'tile';
+    el.appendChild(document.createElement('span'));
+    place(el, cell);
+    gridEl.appendChild(el);
+    return el;
+  }
+
+  function show(el, value, effect) {
+    var digits = String(value).length;
+    el.className = 'tile';
+    if (digits >= 3) el.classList.add('d' + Math.min(digits, 5));
+    if (value > 1024) {
+      el.classList.add('big');
+    } else {
+      el.classList.add('v' + value);
+    }
+    if (effect) el.classList.add(effect);
+    el.firstChild.textContent = value;
+  }
+
+  /* Rebuilds every tile from the board, popping them in, over the empty cells. */
+  function render() {
+    gridEl.textContent = '';
+    for (var i = 0; i < SIZE * SIZE; i++) makeTile(i);
+    els = progress.game.board.map(function (value, cell) {
+      if (value === 0) return null;
+      var el = makeTile(cell);
+      show(el, value, 'new');
+      return el;
+    });
+  }
+
+  function showMeta() {
+    var score = 0;
+    if (progress.game !== null) score = progress.game.score;
+    metaEl.textContent = 'Score ' + score + '\nBest ' + progress.best;
+  }
+
+  async function play(direction) {
+    if (!playing) return;
+    if (busy) {
+      pending = direction;
+      return;
+    }
+    var game = progress.game;
+    var result = move(game.board, direction);
+    if (!result.moved) return;
+    busy = true;
+    var next = els.map(function () { return null; });
+    var gone = [];
+    result.slides.forEach(function (s) {
+      var el = els[s.from];
+      el.classList.remove('new', 'merged');
+      place(el, s.to);
+      if (next[s.to] === null) {
+        next[s.to] = el;
+        el.classList.add('on');
+      } else {
+        gone.push(el);
+      }
+    });
+    els = next;
+    var added = spawn(result.board, rand);
+    progress.game = { board: added.board, score: game.score + result.score, won: game.won };
+    progress.best = Math.max(progress.best, progress.game.score);
+    showMeta();
+    await wait(SLIDE_MS);
+    gone.forEach(function (el) { el.remove(); });
+    els.forEach(function (el) {
+      if (el !== null) el.classList.remove('on');
+    });
+    result.merged.forEach(function (cell) { show(els[cell], result.board[cell], 'merged'); });
+    els[added.cell] = makeTile(added.cell);
+    show(els[added.cell], added.board[added.cell], 'new');
+    busy = false;
+    if (hasWon(progress.game.board) && !progress.game.won) {
+      progress.game.won = true;
+      save();
+      win();
+    } else if (!canMove(progress.game.board)) {
+      lose();
+    } else {
+      save();
+      if (pending !== null) {
+        var then = pending;
+        pending = null;
+        play(then);
+      }
+    }
+  }
+
+  function startGame() {
+    progress.game = { board: newBoard(rand), score: 0, won: false };
+    save();
+    render();
+    showMeta();
+    resume();
+  }
+
+  function resume() {
+    overlayEl.hidden = true;
+    playing = true;
+    pending = null;
+  }
+
+  function win() {
+    playing = false;
+    overlay(WIN + '!', 'You made the ' + WIN + ' tile with ' + progress.game.score + ' points. Keep going for a higher score?',
+      'Keep going', keepGoing, 'New game', startGame);
+  }
+
+  /* The move that made WIN may also have been the last one possible. */
+  function keepGoing() {
+    if (canMove(progress.game.board)) {
+      resume();
+    } else {
+      lose();
+    }
+  }
+
+  function lose() {
+    playing = false;
+    var score = progress.game.score;
+    var text = 'No moves left. You scored ' + score + ' points.';
+    if (score > 0 && score === progress.best) text += ' That is your best!';
+    progress.game = null;
+    save();
+    overlay('Game over', text, 'Play again', startGame, null, null);
+  }
+
+  function overlay(title, text, button, go, other, then) {
+    titleEl.textContent = title;
+    textEl.textContent = text;
+    goBtn.textContent = button;
+    onGo = go;
+    onOther = then;
+    otherBtn.hidden = other === null;
+    if (other !== null) otherBtn.textContent = other;
+    if (progress.best > 0) {
+      bestEl.textContent = 'Best: ' + progress.best + ' points';
+    } else {
+      bestEl.textContent = 'No best yet';
+    }
+    overlayEl.hidden = false;
+    goBtn.focus();
+  }
+
+  goBtn.addEventListener('click', function () { onGo(); });
+  otherBtn.addEventListener('click', function () { onOther(); });
+
+  newBtn.addEventListener('click', function () {
+    if (!playing) return;
+    playing = false;
+    overlay('New game?', 'This game will be lost.', 'Start over', startGame, 'Keep playing', resume);
+  });
+
+  /* Swipe anywhere on the board to move the tiles that way. */
+  stageEl.addEventListener('pointerdown', function (ev) {
+    if (!playing) return;
+    press = { x: ev.clientX, y: ev.clientY };
+    stageEl.setPointerCapture(ev.pointerId);
+  });
+
+  stageEl.addEventListener('pointermove', function (ev) {
+    if (press === null) return;
+    var dx = ev.clientX - press.x;
+    var dy = ev.clientY - press.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < SWIPE) return;
+    press = null;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      if (dx > 0) {
+        play('right');
+      } else {
+        play('left');
+      }
+    } else if (dy > 0) {
+      play('down');
+    } else {
+      play('up');
+    }
+  });
+
+  ['pointerup', 'pointercancel'].forEach(function (name) {
+    stageEl.addEventListener(name, function () {
+      press = null;
+    });
+  });
+
+  document.addEventListener('keydown', function (ev) {
+    var direction = KEYS[ev.key];
+    if (direction === undefined || !playing) return;
+    ev.preventDefault();
+    play(direction);
+  });
+
+  if (progress.game !== null) {
+    render();
+    showMeta();
+    resume();
+  } else {
+    progress.game = { board: newBoard(rand), score: 0, won: false };
+    render();
+    progress.game = null;
+    showMeta();
+    overlay('2048', 'Swipe to slide every tile. Two equal tiles that meet merge into one. Make a ' + WIN + ' tile before the board fills up.', 'Play', startGame, null, null);
+  }
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('../sw.js').catch(function () {
+        /* file:// or no HTTPS: the app runs fine, it just is not installable. */
+      });
+    });
+  }
+}
+
+if (typeof document !== 'undefined') init();
+</script>
+</body>
+</html>
