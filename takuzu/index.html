@@ -1,0 +1,1100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Takuzu</title>
+<meta name="description" content="Fill the grid with 0s and 1s: a Takuzu (Binairo) puzzle that generates itself in your browser.">
+<meta name="theme-color" content="#0f1420">
+<link rel="manifest" href="../manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gameslop">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root {
+  color-scheme: light dark;
+  --width: min(100%, 520px);
+  --n: 8;
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --ink: #1b2130;
+  --muted: #6b7382;
+  --line: #d3d8e2;
+  --edge: #2a3143;
+  --sel: #cfe0ff;
+  --bad: #d64545;
+  --badbg: #fbe3e3;
+  /* The hint ring is ink rather than the usual orange, which is a cell colour here. */
+  --hint: #1b2130;
+  --c0: #f08c1a;
+  --c1: #2f6fe0;
+  --btn: #ffffff;
+  --btnline: #ccd2dd;
+  --accent: #2358c8;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1420;
+    --panel: #161c2b;
+    --ink: #e7ebf3;
+    --muted: #8b95a8;
+    --line: #2b3346;
+    --edge: #8a94a8;
+    --sel: #2b456f;
+    --bad: #ff7b7b;
+    --badbg: #45222a;
+    --hint: #e7ebf3;
+    --c0: #ffa64d;
+    --c1: #4d8dff;
+    --btn: #1c2334;
+    --btnline: #313a50;
+    --accent: #79a8ff;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+header {
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+h1 { font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercase; }
+.meta { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+button.key, a.key {
+  font: inherit;
+  background: var(--btn);
+  color: var(--ink);
+  border: 1px solid var(--btnline);
+  border-radius: 10px;
+  padding: 12px 0;
+  min-height: 48px;
+  cursor: pointer;
+}
+button.key:active { background: var(--sel); }
+button.key:disabled { opacity: .4; cursor: default; }
+button.key.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* A link, since it leaves the page; laid out like the buttons around it. */
+a.key { display: flex; align-items: center; justify-content: center; padding: 0 10px; font-size: 22px; text-decoration: none; }
+/* Back leaves for the main menu; New and Restart throw the game away; Check,
+ * Hint and Undo help you play. The rules between them say which is which. */
+.actions {
+  position: relative;
+  flex: none;
+  width: var(--width);
+  display: grid;
+  grid-template-columns: auto auto 1fr 1fr auto 1fr 1fr 1fr;
+  gap: 6px;
+}
+.actions button.key { font-size: 14px; padding-inline: 4px; }
+.sep { width: 1px; margin: 6px 3px; background: var(--btnline); border-radius: 1px; }
+/* The New menu hangs below its button. */
+.menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 10px);
+  z-index: 5;
+  width: min(100%, 300px);
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--btnline);
+  border-radius: 14px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .28);
+}
+/* Without this, display: grid above would beat the hidden attribute. */
+.menu[hidden] { display: none; }
+.menu h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+#menu-diff { grid-template-columns: repeat(3, 1fr); }
+.chip {
+  font: inherit;
+  font-size: 14px;
+  min-height: 38px;
+  border: 1px solid var(--btnline);
+  border-radius: 8px;
+  background: var(--btn);
+  color: var(--ink);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.menu p { margin: 0; font-size: 14px; font-weight: 600; text-align: center; }
+.menu .go { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+/* The stage takes whatever height is left, and the board is the largest
+ * square that fits in it. */
+.stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+}
+/* The gaps between the cells are the grid lines. */
+.board {
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+  display: grid;
+  grid-template-columns: repeat(var(--n), 1fr);
+  grid-template-rows: repeat(var(--n), 1fr);
+  gap: 1px;
+  background: var(--line);
+  border: 3px solid var(--edge);
+  border-radius: 4px;
+}
+/* A filled cell is a square in its colour; a given one has a dot on it. */
+.cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  background: var(--panel);
+  cursor: pointer;
+}
+.cell::before { content: ''; width: 82%; height: 82%; border-radius: 14%; }
+.cell.v0::before { background: var(--c0); }
+.cell.v1::before { background: var(--c1); }
+.cell.given::after {
+  content: '';
+  position: absolute;
+  width: 10%;
+  height: 10%;
+  border-radius: 50%;
+  background: var(--panel);
+  opacity: .22;
+}
+.cell.bad { background: var(--badbg); }
+.cell.bad::before { box-shadow: 0 0 0 3px var(--bad); }
+.cell.hint { animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse {
+  0%, 100% { box-shadow: inset 0 0 0 2px var(--hint); }
+  50% { box-shadow: inset 0 0 0 4px var(--hint); }
+}
+.status { flex: none; margin: 0; min-height: 38px; font-size: 14px; color: var(--muted); text-align: center; }
+.status.win { color: var(--accent); font-weight: 600; }
+.status .why { display: block; font-size: 13px; }
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+  background: rgba(8, 12, 22, .45);
+}
+.overlay[hidden] { display: none; }
+.overlay > div {
+  width: min(100%, 340px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 26px 20px;
+  text-align: center;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 18px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .35);
+  animation: pop .3s ease-out;
+}
+.overlay strong { font-size: 28px; line-height: 1.1; color: var(--accent); }
+.overlay p { margin: 0; color: var(--muted); white-space: pre-line; }
+.overlay button.key { padding: 10px 20px; font-size: 16px; font-weight: 600; }
+@keyframes pop {
+  from { opacity: 0; transform: scale(.85); }
+  to { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Takuzu</h1>
+  <span class="meta" id="meta"></span>
+</header>
+<div class="actions">
+  <a class="key" href="../" aria-label="Main menu">←</a>
+  <span class="sep" aria-hidden="true"></span>
+  <button class="key" id="new" type="button" aria-haspopup="true" aria-expanded="false">New</button>
+  <button class="key" id="restart" type="button">Restart</button>
+  <span class="sep" aria-hidden="true"></span>
+  <button class="key" id="check" type="button">Check</button>
+  <button class="key" id="hintbtn" type="button">Hint</button>
+  <button class="key" id="undo" type="button">Undo</button>
+  <div class="menu" id="menu" hidden>
+    <h2>Difficulty</h2>
+    <div class="chips" id="menu-diff"></div>
+    <h2>Size</h2>
+    <div class="chips" id="menu-size"></div>
+    <p id="menu-best"></p>
+    <div class="go">
+      <button class="key" id="menu-cancel" type="button">Cancel</button>
+      <button class="key primary" id="menu-start" type="button">Start</button>
+    </div>
+  </div>
+</div>
+<div class="stage">
+  <div class="board" id="board"></div>
+</div>
+<p class="status" id="status"></p>
+<div class="overlay" id="overlay">
+  <div>
+    <strong id="ov-title"></strong>
+    <p id="ov-text"></p>
+    <button class="key" id="dismiss" type="button">Back to the board</button>
+  </div>
+</div>
+<script id="app">
+'use strict';
+
+/* ------------------------------------------------------------------ *
+ * Rules
+ * ------------------------------------------------------------------ */
+
+/* The grid is size x size cells, row by row. A cell holds 0, 1 or EMPTY. */
+var SIZES = [6, 8, 10, 12];
+var EMPTY = -1;
+/* What 0 and 1 are called on screen, where they are coloured squares. */
+var NAMES = ['orange', 'blue'];
+var STORAGE_KEY = 'takuzu.v1';
+var BEST_STORAGE_KEY = 'takuzu.best.v1';
+var UNDO_LIMIT = 200;
+
+/* What the solver may reason with at each difficulty. Every level counts
+ * three in a row and full halves; lines looks at every way left to fill a
+ * row or column, and unique also rules out ways that copy a full one.
+ * Easy reasons like medium but keeps at least minGivenShare of the cells. */
+var DIFFICULTIES = {
+  easy: { label: 'Easy', lines: false, unique: false, minGivenShare: 0.4 },
+  medium: { label: 'Medium', lines: false, unique: false, minGivenShare: 0 },
+  hard: { label: 'Hard', lines: true, unique: true, minGivenShare: 0 }
+};
+/* How many puzzles to try for one that an easier level's reasoning can not solve. */
+var TRIES = 20;
+
+function rng(seed) {
+  var a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    var t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffle(a, rand) {
+  var out = a.slice();
+  for (var i = out.length - 1; i > 0; i--) {
+    var j = Math.floor(rand() * (i + 1));
+    var t = out[i];
+    out[i] = out[j];
+    out[j] = t;
+  }
+  return out;
+}
+
+function range(n) {
+  return Array.from({ length: n }, function (_, i) { return i; });
+}
+
+/* Every row and column as { kind, cells }, rows first. */
+function linesOf(size) {
+  var rows = range(size).map(function (r) {
+    return { kind: 'row', cells: range(size).map(function (c) { return r * size + c; }) };
+  });
+  var cols = range(size).map(function (c) {
+    return { kind: 'column', cells: range(size).map(function (r) { return r * size + c; }) };
+  });
+  return rows.concat(cols);
+}
+
+/* Every way to fill a line of the given size within the rules, as a bit
+ * mask with bit k set when cell k holds a 1. */
+var validCache = {};
+function validLines(size) {
+  if (validCache[size]) return validCache[size];
+  var out = [];
+  for (var m = 0; m < (1 << size); m++) {
+    var ones = 0;
+    var ok = true;
+    for (var k = 0; k < size; k++) {
+      if ((m >> k) & 1) ones++;
+      if (k >= 2) {
+        var three = (m >> (k - 2)) & 7;
+        if (three === 0 || three === 7) ok = false;
+      }
+    }
+    if (ok && ones * 2 === size) out.push(m);
+  }
+  validCache[size] = out;
+  return out;
+}
+
+/* A line's cells as { known, ones } masks. */
+function maskOf(values, cells) {
+  var known = 0;
+  var ones = 0;
+  cells.forEach(function (i, k) {
+    if (values[i] === EMPTY) return;
+    known |= 1 << k;
+    if (values[i] === 1) ones |= 1 << k;
+  });
+  return { known: known, ones: ones };
+}
+
+/* Every empty cell that can be worked out, each once and by the simplest
+ * reasoning that finds it, as { idx, value, technique }. Returns null if
+ * some line can no longer be filled at all. */
+function allPlacements(size, values, opts) {
+  var lines = linesOf(size);
+  var found = {};
+  var dead = false;
+  function add(idx, value, technique) {
+    if (found[idx] === undefined) found[idx] = { idx: idx, value: value, technique: technique };
+  }
+
+  /* A cell that would make three in a row with either value takes the other. */
+  lines.forEach(function (line) {
+    var at = function (k) {
+      if (k < 0 || k >= size) return EMPTY;
+      return values[line.cells[k]];
+    };
+    line.cells.forEach(function (i, k) {
+      if (values[i] !== EMPTY) return;
+      [0, 1].forEach(function (v) {
+        var pair = (at(k - 2) === v && at(k - 1) === v) || (at(k - 1) === v && at(k + 1) === v) || (at(k + 1) === v && at(k + 2) === v);
+        if (pair) add(i, 1 - v, 'No three ' + NAMES[v] + 's in a row');
+      });
+    });
+  });
+
+  /* A line holding half its cells of one value fills up with the other. */
+  lines.forEach(function (line) {
+    [0, 1].forEach(function (v) {
+      var count = line.cells.filter(function (i) { return values[i] === v; }).length;
+      if (count * 2 !== size) return;
+      line.cells.forEach(function (i) {
+        if (values[i] === EMPTY) add(i, 1 - v, 'This ' + line.kind + ' already has all its ' + NAMES[v] + 's');
+      });
+    });
+  });
+
+  /* What every way left to fill a line agrees on, first by the line alone,
+   * then without copying a full line of the same kind. */
+  if (opts.lines) {
+    var full = (1 << size) - 1;
+    var complete = { row: [], column: [] };
+    lines.forEach(function (line) {
+      var m = maskOf(values, line.cells);
+      if (m.known === full) complete[line.kind].push(m.ones);
+    });
+    lines.forEach(function (line) {
+      var m = maskOf(values, line.cells);
+      if (m.known === full) return;
+      var ways = validLines(size).filter(function (w) { return (w & m.known) === m.ones; });
+      var passes = [{ ways: ways, technique: 'Every other way to fill this ' + line.kind + ' breaks a rule' }];
+      if (opts.unique) {
+        passes.push({
+          ways: ways.filter(function (w) { return complete[line.kind].indexOf(w) < 0; }),
+          technique: 'No two ' + line.kind + 's may be the same'
+        });
+      }
+      passes.forEach(function (pass) {
+        if (pass.ways.length === 0) {
+          dead = true;
+          return;
+        }
+        var allOnes = pass.ways.reduce(function (a, w) { return a & w; }, full);
+        var anyOnes = pass.ways.reduce(function (a, w) { return a | w; }, 0);
+        line.cells.forEach(function (i, k) {
+          if (values[i] !== EMPTY) return;
+          if ((allOnes >> k) & 1) add(i, 1, pass.technique);
+          if (!((anyOnes >> k) & 1)) add(i, 0, pass.technique);
+        });
+      });
+    });
+  }
+
+  if (dead) return null;
+  return Object.keys(found).map(function (k) { return found[k]; });
+}
+
+/* Fills in whatever can be worked out until nothing more can. Returns the
+ * values, or null on reaching a dead end. */
+function solveLogically(size, values, opts) {
+  var v = values.slice();
+  for (;;) {
+    var steps = allPlacements(size, v, opts);
+    if (steps === null) return null;
+    if (steps.length === 0) return v;
+    steps.forEach(function (s) { v[s.idx] = s.value; });
+  }
+}
+
+function isFull(values) {
+  return values.indexOf(EMPTY) < 0;
+}
+
+/* The cells that break a rule: three in a row, more than half of one value
+ * in a line, or two full lines of a kind that are the same. */
+function conflicts(size, values) {
+  var bad = new Set();
+  var seen = {};
+  linesOf(size).forEach(function (line) {
+    var vals = line.cells.map(function (i) { return values[i]; });
+    for (var k = 2; k < size; k++) {
+      if (vals[k] !== EMPTY && vals[k] === vals[k - 1] && vals[k] === vals[k - 2]) {
+        [k - 2, k - 1, k].forEach(function (j) { bad.add(line.cells[j]); });
+      }
+    }
+    [0, 1].forEach(function (v) {
+      var mine = line.cells.filter(function (i) { return values[i] === v; });
+      if (mine.length * 2 > size) mine.forEach(function (i) { bad.add(i); });
+    });
+    if (vals.indexOf(EMPTY) >= 0) return;
+    var key = line.kind + ':' + vals.join('');
+    if (seen[key]) {
+      seen[key].concat(line.cells).forEach(function (i) { bad.add(i); });
+    } else {
+      seen[key] = line.cells;
+    }
+  });
+  return Array.from(bad).sort(function (a, b) { return a - b; });
+}
+
+/* A full grid within the rules: guess a random cell, work out what follows,
+ * and start over on a dead end. */
+function fillGrid(size, rand) {
+  var all = DIFFICULTIES.hard;
+  for (;;) {
+    var values = new Array(size * size).fill(EMPTY);
+    while (values !== null && !isFull(values)) {
+      var empty = range(size * size).filter(function (i) { return values[i] === EMPTY; });
+      values[empty[Math.floor(rand() * empty.length)]] = rand() < 0.5 ? 0 : 1;
+      values = solveLogically(size, values, all);
+    }
+    if (values !== null && conflicts(size, values).length === 0) return values;
+  }
+}
+
+/* Takes givens away from a full grid for as long as the solver for opts can
+ * still work the whole grid back out, which also makes the answer unique,
+ * and as long as at least minGivenShare of the cells stay given. */
+function carve(size, solution, opts, rand) {
+  var givens = solution.slice();
+  var left = size * size;
+  var floor = Math.round(opts.minGivenShare * size * size);
+  shuffle(range(size * size), rand).forEach(function (i) {
+    if (left <= floor) return;
+    givens[i] = EMPTY;
+    left--;
+    var solved = solveLogically(size, givens, opts);
+    if (solved === null || !isFull(solved)) {
+      givens[i] = solution[i];
+      left++;
+    }
+  });
+  return givens;
+}
+
+/* A puzzle is { size, difficulty, givens, solution }. A level that reasons
+ * with more than the one below tries to find one that needs it, and settles
+ * for the last one. */
+function generate(difficulty, size, rand) {
+  var keys = Object.keys(DIFFICULTIES);
+  var opts = DIFFICULTIES[difficulty];
+  var easier = DIFFICULTIES[keys[keys.indexOf(difficulty) - 1]];
+  if (easier !== undefined && easier.lines === opts.lines && easier.unique === opts.unique) easier = undefined;
+  var puzzle = null;
+  for (var t = 0; t < TRIES; t++) {
+    var solution = fillGrid(size, rand);
+    var givens = carve(size, solution, opts, rand);
+    puzzle = { size: size, difficulty: difficulty, givens: givens, solution: solution };
+    if (easier === undefined) return puzzle;
+    var tried = solveLogically(size, givens, easier);
+    if (!isFull(tried)) return puzzle;
+  }
+  return puzzle;
+}
+
+/* A tap cycles a cell through empty, 0 (orange) and 1 (blue). */
+function cycle(value) {
+  if (value === EMPTY) return 0;
+  if (value === 0) return 1;
+  return EMPTY;
+}
+
+/* --- persistence ----------------------------------------------------- */
+
+function isCellArray(a, size, allowEmpty) {
+  if (!Array.isArray(a) || a.length !== size * size) return false;
+  return a.every(function (v) { return v === 0 || v === 1 || (allowEmpty && v === EMPTY); });
+}
+
+function serialize(puzzle, state) {
+  return JSON.stringify({
+    version: 1,
+    puzzle: puzzle,
+    state: { values: state.values, undo: state.undo, hints: state.hints, elapsed: state.elapsed }
+  });
+}
+
+function deserialize(text) {
+  if (!text) return null;
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+  if (!data || data.version !== 1 || !data.puzzle || !data.state) return null;
+  var p = data.puzzle;
+  var s = data.state;
+  if (SIZES.indexOf(p.size) < 0) return null;
+  if (!DIFFICULTIES[p.difficulty]) return null;
+  if (!isCellArray(p.givens, p.size, true)) return null;
+  if (!isCellArray(p.solution, p.size, false)) return null;
+  if (!isCellArray(s.values, p.size, true)) return null;
+  if (!Array.isArray(s.undo)) return null;
+  if (!Array.isArray(s.hints) || !s.hints.every(function (h) { return typeof h === 'string'; })) return null;
+  if (!Number.isInteger(s.elapsed) || s.elapsed < 0) return null;
+  var keepsGivens = p.givens.every(function (g, i) { return g === EMPTY || s.values[i] === g; });
+  if (!keepsGivens) return null;
+  return {
+    puzzle: { size: p.size, difficulty: p.difficulty, givens: p.givens, solution: p.solution },
+    state: { values: s.values, undo: s.undo.slice(-UNDO_LIMIT), hints: s.hints, elapsed: s.elapsed }
+  };
+}
+
+function freshState(puzzle) {
+  return { values: puzzle.givens.slice(), undo: [], hints: [], elapsed: 0 };
+}
+
+/* --- solve times ----------------------------------------------------- */
+
+/* m:ss, or h:mm:ss once past the hour. */
+function formatTime(ms) {
+  var total = Math.floor(ms / 1000);
+  var h = Math.floor(total / 3600);
+  var m = Math.floor(total / 60) % 60;
+  var ss = String(total % 60).padStart(2, '0');
+  if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + ss;
+  return m + ':' + ss;
+}
+
+/* The best time is kept per difficulty and size, under this key. */
+function bestKey(difficulty, size) {
+  return difficulty + '/' + size;
+}
+
+function isBestKey(key) {
+  return Object.keys(DIFFICULTIES).some(function (difficulty) {
+    return SIZES.some(function (size) { return bestKey(difficulty, size) === key; });
+  });
+}
+
+/* The bests are a map from bestKey to the fastest solve in milliseconds. */
+function deserializeBest(text) {
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return {};
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
+  var ok = Object.keys(data).every(function (key) {
+    return isBestKey(key) && Number.isInteger(data[key]) && data[key] >= 0;
+  });
+  if (!ok) return {};
+  return data;
+}
+
+/* ------------------------------------------------------------------ *
+ * UI
+ * ------------------------------------------------------------------ */
+
+function init() {
+  var boardEl = document.getElementById('board');
+  var statusEl = document.getElementById('status');
+  var metaEl = document.getElementById('meta');
+  var menuEl = document.getElementById('menu');
+  var newBtn = document.getElementById('new');
+  var overlayEl = document.getElementById('overlay');
+  var dismissBtn = document.getElementById('dismiss');
+
+  var rand = rng(Math.floor(Math.random() * 4294967296));
+  var puzzle = null;
+  var state = null;
+  var hintCells = [];
+  /* The cells Check found breaking a rule, until the next move. */
+  var badCells = [];
+  var hintList = [];
+  var hintAt = 0;
+  var solved = false;
+  var cellEls = [];
+  var best = loadBest();
+  /* When the clock last started or was read, or null while it is stopped. */
+  var clockFrom = null;
+
+  function save() {
+    foldClock();
+    try {
+      localStorage.setItem(STORAGE_KEY, serialize(puzzle, state));
+    } catch (e) {
+      /* private mode / quota: the game still works, it just forgets. */
+    }
+  }
+
+  function load() {
+    try {
+      return deserialize(localStorage.getItem(STORAGE_KEY));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveBest() {
+    try {
+      localStorage.setItem(BEST_STORAGE_KEY, JSON.stringify(best));
+    } catch (e) {
+      /* as in save() */
+    }
+  }
+
+  function loadBest() {
+    try {
+      return deserializeBest(localStorage.getItem(BEST_STORAGE_KEY));
+    } catch (e) {
+      return {};
+    }
+  }
+
+  /* Adds the time since the clock last started or was read to the puzzle. */
+  function foldClock() {
+    if (clockFrom === null) return;
+    var now = performance.now();
+    state.elapsed += Math.round(now - clockFrom);
+    clockFrom = now;
+  }
+
+  /* The clock only runs while the board is on screen and has focus, and stops
+   * once the puzzle is solved. */
+  function syncClock() {
+    foldClock();
+    var watching = document.visibilityState === 'visible' && document.hasFocus();
+    if (!watching || solved) {
+      clockFrom = null;
+    } else if (clockFrom === null) {
+      clockFrom = performance.now();
+    }
+  }
+
+  function overlay(title, text, button) {
+    document.getElementById('ov-title').textContent = title;
+    document.getElementById('ov-text').textContent = text;
+    dismissBtn.textContent = button;
+    overlayEl.hidden = false;
+    dismissBtn.focus();
+  }
+
+  function announceWin() {
+    var key = bestKey(puzzle.difficulty, puzzle.size);
+    var before = best[key];
+    /* Times are shown in whole seconds, so they are compared that way too:
+     * a solve that shows the same time as the best does not beat it. */
+    var faster = before === undefined || Math.floor(state.elapsed / 1000) < Math.floor(before / 1000);
+    var bestText = '';
+    /* A solve with hints never counts as a best. */
+    if (state.hints.length && before !== undefined) {
+      bestText = 'Hints used, so no best · Best: ' + formatTime(before);
+    } else if (state.hints.length) {
+      bestText = 'Hints used, so no best';
+    } else if (faster && before !== undefined) {
+      bestText = 'New best! Was ' + formatTime(before);
+    } else if (before !== undefined) {
+      bestText = 'Best: ' + formatTime(before);
+    }
+    if (faster && !state.hints.length) {
+      best[key] = state.elapsed;
+      saveBest();
+    }
+    save();
+    var text = 'Time: ' + formatTime(state.elapsed);
+    if (bestText) text += '\n' + bestText;
+    overlay('Solved!', text, 'Back to the board');
+  }
+
+  function buildGrid() {
+    document.documentElement.style.setProperty('--n', String(puzzle.size));
+    boardEl.textContent = '';
+    cellEls = puzzle.givens.map(function (_, i) {
+      var el = document.createElement('div');
+      el.className = 'cell';
+      el.dataset.idx = String(i);
+      boardEl.appendChild(el);
+      return el;
+    });
+  }
+
+  function render() {
+    var bad = conflicts(puzzle.size, state.values);
+    cellEls.forEach(function (el, i) {
+      var value = state.values[i];
+      el.classList.toggle('v0', value === 0);
+      el.classList.toggle('v1', value === 1);
+      el.classList.toggle('given', puzzle.givens[i] !== EMPTY);
+      el.classList.toggle('bad', badCells.indexOf(i) >= 0);
+      el.classList.toggle('hint', hintCells.indexOf(i) >= 0);
+    });
+    document.getElementById('undo').disabled = state.undo.length === 0;
+    var wasSolved = solved;
+    solved = isFull(state.values) && bad.length === 0;
+    syncClock();
+    if (solved && !wasSolved) announceWin();
+    if (solved) {
+      statusEl.textContent = 'Solved. Nice one.';
+      statusEl.className = 'status win';
+    } else if (statusEl.className === 'status win') {
+      statusEl.textContent = '';
+      statusEl.className = 'status';
+    }
+  }
+
+  /* Two deliberate lines: the verdict, then the reason under it, so the
+   * message never wraps mid-phrase. */
+  function setHint(technique) {
+    setStatus('This cell can be worked out');
+    var why = document.createElement('span');
+    why.className = 'why';
+    why.textContent = technique;
+    statusEl.appendChild(why);
+  }
+
+  function setStatus(text) {
+    statusEl.textContent = text;
+    statusEl.className = 'status';
+  }
+
+  function pushUndo(cells) {
+    state.undo.push(cells);
+    if (state.undo.length > UNDO_LIMIT) state.undo.shift();
+  }
+
+  /* Every distinct hint shown counts once, so asking for the same one again
+   * is free. */
+  function countHint(key) {
+    if (state.hints.indexOf(key) >= 0) return;
+    state.hints.push(key);
+    save();
+    renderMeta();
+  }
+
+  function clearHint() {
+    hintCells = [];
+    badCells = [];
+    hintList = [];
+    hintAt = 0;
+  }
+
+  function tap(i) {
+    if (puzzle.givens[i] !== EMPTY) {
+      setStatus('That cell is part of the puzzle.');
+      return;
+    }
+    pushUndo([{ idx: i, value: state.values[i] }]);
+    state.values[i] = cycle(state.values[i]);
+    clearHint();
+    setStatus('');
+    save();
+    render();
+  }
+
+  function undo() {
+    var entry = state.undo.pop();
+    if (!entry) return;
+    entry.forEach(function (e) { state.values[e.idx] = e.value; });
+    clearHint();
+    setStatus('');
+    save();
+    render();
+  }
+
+  function restartPuzzle() {
+    var touched = range(puzzle.size * puzzle.size)
+      .filter(function (i) { return puzzle.givens[i] === EMPTY && state.values[i] !== EMPTY; })
+      .map(function (i) { return { idx: i, value: state.values[i] }; });
+    if (touched.length === 0) return;
+    if (!confirm('Restart this puzzle? Your entries will be cleared.')) return;
+    touched.forEach(function (t) { state.values[t.idx] = EMPTY; });
+    pushUndo(touched);
+    clearHint();
+    setStatus('');
+    save();
+    render();
+  }
+
+  function wrongCells() {
+    return range(puzzle.size * puzzle.size).filter(function (i) {
+      return state.values[i] !== EMPTY && state.values[i] !== puzzle.solution[i];
+    });
+  }
+
+  /* Shows the cells that break a rule. Anything else that is wrong it only
+   * mentions, without saying where: that takes a hint. */
+  function check() {
+    clearHint();
+    badCells = conflicts(puzzle.size, state.values);
+    if (badCells.length) {
+      setStatus('The red cells break a rule.');
+    } else if (wrongCells().length) {
+      setStatus('Something on the board is wrong. Press Hint to see where.');
+    } else {
+      setStatus('No mistakes so far.');
+    }
+    render();
+  }
+
+  function hint() {
+    var wrong = wrongCells();
+    if (wrong.length) {
+      hintCells = wrong;
+      countHint('wrong:' + wrong.join(','));
+      setStatus(wrong.length === 1 ? 'This cell is wrong.' : 'These cells are wrong.');
+      render();
+      return;
+    }
+    /* Hint again on an unchanged board moves on to the next cell that can be
+     * worked out, for when this one's reasoning will not come. Any move clears
+     * the list, so the next hint starts from the board as it then stands. */
+    if (hintList.length) {
+      hintAt = (hintAt + 1) % hintList.length;
+    } else {
+      hintList = allPlacements(puzzle.size, state.values, DIFFICULTIES[puzzle.difficulty]) || [];
+      hintAt = 0;
+    }
+    if (hintList.length) {
+      var step = hintList[hintAt];
+      hintCells = [step.idx];
+      countHint('cell:' + step.idx);
+      setHint(step.technique);
+      render();
+      return;
+    }
+    var empty = state.values.indexOf(EMPTY);
+    if (empty < 0) {
+      setStatus('The grid is already full.');
+      render();
+      return;
+    }
+    hintCells = [empty];
+    countHint('cell:' + empty);
+    setStatus('This cell can be worked out.');
+    render();
+  }
+
+  function startPuzzle(newPuzzle) {
+    puzzle = newPuzzle;
+    clockFrom = null;
+    solved = false;
+    state = freshState(puzzle);
+    clearHint();
+    buildGrid();
+    renderMeta();
+    save();
+    render();
+  }
+
+  function newPuzzle(difficulty, size) {
+    setStatus('Generating...');
+    /* Let the status paint before the synchronous generator blocks. */
+    setTimeout(function () {
+      startPuzzle(generate(difficulty, size, rand));
+      setStatus('');
+    }, 20);
+  }
+
+  function hasProgress() {
+    return state.values.some(function (v, i) { return puzzle.givens[i] === EMPTY && v !== EMPTY; });
+  }
+
+  function renderMeta() {
+    var text = DIFFICULTIES[puzzle.difficulty].label + ' · ' + puzzle.size + '×' + puzzle.size;
+    var used = state.hints.length;
+    if (used === 1) {
+      text += ' · 1 hint';
+    } else if (used > 1) {
+      text += ' · ' + used + ' hints';
+    }
+    metaEl.textContent = text;
+  }
+
+  /* --- the New menu: pick a difficulty and a size, then start --- */
+
+  var choice = { difficulty: 'medium', size: 8 };
+
+  /* Only flips aria-pressed: rebuilding the chips would detach the one just
+   * tapped, and the outside-tap check would then close the menu under you. */
+  function renderMenu() {
+    menuEl.querySelectorAll('#menu-diff .chip').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.diff === choice.difficulty));
+    });
+    menuEl.querySelectorAll('#menu-size .chip').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(Number(b.dataset.size) === choice.size));
+    });
+    var time = best[bestKey(choice.difficulty, choice.size)];
+    if (time === undefined) {
+      document.getElementById('menu-best').textContent = 'No best yet';
+    } else {
+      document.getElementById('menu-best').textContent = 'Best: ' + formatTime(time);
+    }
+  }
+
+  function openMenu() {
+    choice = { difficulty: puzzle.difficulty, size: puzzle.size };
+    renderMenu();
+    menuEl.hidden = false;
+    newBtn.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeMenu() {
+    menuEl.hidden = true;
+    newBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  function chip(label, onPick) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip';
+    b.textContent = label;
+    b.addEventListener('click', function () {
+      onPick();
+      renderMenu();
+    });
+    return b;
+  }
+
+  /* --- wiring --- */
+
+  Object.keys(DIFFICULTIES).forEach(function (key) {
+    var b = chip(DIFFICULTIES[key].label, function () { choice.difficulty = key; });
+    b.dataset.diff = key;
+    document.getElementById('menu-diff').appendChild(b);
+  });
+  SIZES.forEach(function (size) {
+    var b = chip(size + '×' + size, function () { choice.size = size; });
+    b.dataset.size = String(size);
+    document.getElementById('menu-size').appendChild(b);
+  });
+
+  boardEl.addEventListener('click', function (ev) {
+    var cell = ev.target.closest('.cell');
+    if (!cell) return;
+    tap(Number(cell.dataset.idx));
+  });
+
+  dismissBtn.addEventListener('click', function () { overlayEl.hidden = true; });
+  document.getElementById('undo').addEventListener('click', undo);
+  document.getElementById('restart').addEventListener('click', restartPuzzle);
+  document.getElementById('check').addEventListener('click', check);
+  document.getElementById('hintbtn').addEventListener('click', hint);
+  newBtn.addEventListener('click', function () {
+    if (menuEl.hidden) {
+      openMenu();
+    } else {
+      closeMenu();
+    }
+  });
+  document.getElementById('menu-cancel').addEventListener('click', closeMenu);
+  document.getElementById('menu-start').addEventListener('click', function () {
+    closeMenu();
+    if (hasProgress() && !solved && !confirm('Start a new puzzle? This one will be lost.')) return;
+    newPuzzle(choice.difficulty, choice.size);
+  });
+  /* A tap anywhere outside the menu puts it away, as a popup should. */
+  document.addEventListener('click', function (ev) {
+    if (menuEl.hidden) return;
+    if (menuEl.contains(ev.target)) return;
+    if (newBtn.contains(ev.target)) return;
+    closeMenu();
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    syncClock();
+    save();
+  });
+  window.addEventListener('focus', syncClock);
+  window.addEventListener('blur', syncClock);
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    /* While the menu is open, keys belong to it and not to the board. */
+    if (!menuEl.hidden) {
+      if (ev.key === 'Escape') closeMenu();
+      return;
+    }
+    if (ev.key === 'u') undo();
+    if (ev.key === 'h') hint();
+    if (ev.key === 'c') check();
+  });
+
+  var restored = load();
+  if (restored) {
+    puzzle = restored.puzzle;
+    state = restored.state;
+    /* A solved puzzle comes back solved, without announcing it again. */
+    solved = isFull(state.values) && conflicts(puzzle.size, state.values).length === 0;
+    buildGrid();
+    renderMeta();
+    render();
+  } else {
+    startPuzzle(generate('medium', 8, rand));
+  }
+  overlay('Takuzu', 'Fill every cell with orange or blue. No three of a colour in a row, each row and column holds as many of each, and no two rows or columns are the same. Tap a cell to change it.', 'Play');
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('../sw.js').catch(function () {
+        /* file:// or no HTTPS: the app runs fine, it just is not installable. */
+      });
+    });
+  }
+}
+
+if (typeof document !== 'undefined') init();
+</script>
+</body>
+</html>

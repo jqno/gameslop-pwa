@@ -7,5 +7,6 @@ Gameslop is a progressive web app full of small games:
 - Bubbles (a clone of Puzzle Bobble)
 - Minesweeper
 - Pipe Connect (a clone of Flow Free)
+- Takuzu (a.k.a. Binairo)
 
 I totally vibecoded this. I'm sorry...

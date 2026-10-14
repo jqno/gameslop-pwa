@@ -1,6 +1,5 @@
 # Game ideas
 
-- [ ] Takuzu (a.k.a. Binairo)
 - [ ] Star Battle
 - [ ] 2048
 - [ ] Flappy (a clone of Flappy Bird)

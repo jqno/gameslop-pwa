@@ -7,6 +7,7 @@ test:
     node tools/test-bubbles.mjs
     node tools/test-minesweeper.mjs
     node tools/test-pipes.mjs
+    node tools/test-takuzu.mjs
 
 # Serve the app so the service worker and manifest work
 serve port="8000":

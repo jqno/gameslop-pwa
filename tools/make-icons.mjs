@@ -3,7 +3,8 @@
  * for Gems, a board with a full row and a piece being dropped for Blocks, and a
  * cluster of bubbles with one flying up to it for Bubbles, and a corner of a
  * minefield with a flag on its one mine for Minesweeper, and a grid filled
- * with three connected pipes for Pipe Connect.
+ * with three connected pipes for Pipe Connect, and a grid of blue and orange
+ * squares for Takuzu.
  * Each icon is a scene over the unit square, supersampled for smooth
  * edges. Everything sits inside the maskable safe zone (radius 0.4). */
 import { deflateSync } from 'node:zlib';
@@ -369,7 +370,31 @@ function pipes() {
   };
 }
 
-const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper], ['pipes/', pipes]];
+/* --- takuzu: a 4x4 grid of blue and orange squares, partly filled ---- */
+
+function takuzu() {
+  const cell = 0.13;
+  const origin = 0.5 - 2 * cell;
+  const half = cell * 0.42;
+  /* Row by row: b/o a square the player placed, B/O a given one with its
+   * dot, '.' empty. Filled in, it is a valid solution. */
+  const board = ['B.Ob', 'oB..', '.bOO', 'O.b.'];
+  return (x, y) => {
+    const r = Math.floor((y - origin) / cell);
+    const c = Math.floor((x - origin) / cell);
+    if (r < 0 || c < 0 || r > 3 || c > 3) return BG;
+    const lx = x - origin - (c + 0.5) * cell;
+    const ly = y - origin - (r + 0.5) * cell;
+    if (!inRoundedBox(lx, ly, half, half, half * 0.3)) return BG;
+    const what = board[r][c];
+    if (what === '.') return mix(BG, PAPER, 0.08);
+    const colour = what.toLowerCase() === 'b' ? BLUE : ORANGE;
+    if (what !== what.toLowerCase() && Math.hypot(lx, ly) <= half * 0.2) return mix(colour, PAPER, 0.75);
+    return colour;
+  };
+}
+
+const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper], ['pipes/', pipes], ['takuzu/', takuzu]];
 for (const [dir, scene] of ICONS) {
   for (const size of [192, 512]) {
     const name = `${dir}icon-${size}.png`;
