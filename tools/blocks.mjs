@@ -8,7 +8,7 @@ if (!match) throw new Error('could not find <script id="app"> in index.html');
 
 const EXPORTS = [
   'SIZE', 'COLOURS', 'TRAY', 'SHAPES', 'PIECES', 'rng', 'emptyBoard', 'extent', 'fits', 'canPlace',
-  'canPlaceAny', 'fullLines', 'play', 'scoreFor', 'dealTray', 'serialize', 'deserialize'
+  'canPlaceAny', 'fullLines', 'play', 'scoreFor', 'FAMILIES', 'dealTray', 'serialize', 'deserialize'
 ];
 
 const factory = new Function(`${match[1]}\nreturn { ${EXPORTS.join(', ')} };`);

@@ -131,13 +131,28 @@ test('canPlaceAny is false when nothing fits', () => {
 test('a tray holds TRAY pieces of valid shape and colour', () => {
   const rand = B.rng(42);
   for (let k = 0; k < 200; k++) {
-    const tray = B.dealTray(rand);
+    const tray = B.dealTray(rand, B.emptyBoard());
     eq(tray.length, B.TRAY, 'size');
     tray.forEach((p) => {
       assert(Number.isInteger(p.shape) && p.shape >= 0 && p.shape < B.PIECES.length, `shape ${p.shape}`);
       assert(Number.isInteger(p.colour) && p.colour >= 1 && p.colour <= B.COLOURS, `colour ${p.colour}`);
     });
   }
+});
+
+test('a tray has a piece that fits, when room is tight', () => {
+  const rand = B.rng(7);
+  const board = B.emptyBoard().map((_, i) => (Math.floor(i / B.SIZE) + i) % 2);
+  for (let k = 0; k < 200; k++) {
+    const tray = B.dealTray(rand, board);
+    assert(B.canPlaceAny(board, tray.map((p) => B.PIECES[p.shape])), `tray ${k} fits`);
+  }
+});
+
+test('every family has a positive weight', () => {
+  B.FAMILIES.forEach((family) => {
+    assert(Number.isInteger(family.weight) && family.weight > 0, `weight of ${family.shapes[0]}`);
+  });
 });
 
 test('progress survives a save, and bad saves are rejected', () => {

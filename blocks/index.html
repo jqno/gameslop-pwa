@@ -239,23 +239,27 @@ var LINE_POINTS = 10;
 var STORAGE_KEY = 'blocks.v1';
 
 /* Every shape a piece can have, in each orientation it comes in: pieces are
- * never rotated. Rows are split by '/', and 'x' is a cell. */
-var SHAPES = [
-  'x',
-  'xx', 'x/x',
-  'xxx', 'x/x/x',
-  'xx/x.', 'xx/.x', 'x./xx', '.x/xx',
-  'xxxx', 'x/x/x/x',
-  'xx/xx',
-  'x./x./xx', '.x/.x/xx', 'xx/x./x.', 'xx/.x/.x',
-  'xxx/x..', 'xxx/..x', 'x../xxx', '..x/xxx',
-  'xxx/.x.', '.x./xxx', 'x./xx/x.', '.x/xx/.x',
-  '.xx/xx.', 'xx./.xx', 'x./xx/.x', '.x/xx/x.',
-  'xxxxx', 'x/x/x/x/x',
-  'xxx/x../x..', 'xxx/..x/..x', 'x../x../xxx', '..x/..x/xxx',
-  'xxx/xxx', 'xx/xx/xx',
-  'xxx/xxx/xxx'
+ * never rotated. Rows are split by '/', and 'x' is a cell. A family is drawn
+ * by its weight, then one of its orientations evenly, so small pieces come
+ * more often than big ones however many orientations each has. */
+var FAMILIES = [
+  { weight: 8, shapes: ['x'] },
+  { weight: 12, shapes: ['xx', 'x/x'] },
+  { weight: 12, shapes: ['xxx', 'x/x/x'] },
+  { weight: 12, shapes: ['xx/x.', 'xx/.x', 'x./xx', '.x/xx'] },
+  { weight: 8, shapes: ['xxxx', 'x/x/x/x'] },
+  { weight: 12, shapes: ['xx/xx'] },
+  { weight: 8, shapes: ['x./x./xx', 'xxx/x..', 'xx/.x/.x', '..x/xxx'] },
+  { weight: 8, shapes: ['.x/.x/xx', 'x../xxx', 'xx/x./x.', 'xxx/..x'] },
+  { weight: 8, shapes: ['xxx/.x.', '.x./xxx', 'x./xx/x.', '.x/xx/.x'] },
+  { weight: 4, shapes: ['.xx/xx.', 'x./xx/.x'] },
+  { weight: 4, shapes: ['xx./.xx', '.x/xx/x.'] },
+  { weight: 3, shapes: ['xxxxx', 'x/x/x/x/x'] },
+  { weight: 3, shapes: ['xxx/x../x..', 'xxx/..x/..x', 'x../x../xxx', '..x/..x/xxx'] },
+  { weight: 3, shapes: ['xxx/xxx', 'xx/xx/xx'] },
+  { weight: 3, shapes: ['xxx/xxx/xxx'] }
 ];
+var SHAPES = FAMILIES.reduce(function (all, family) { return all.concat(family.shapes); }, []);
 
 /* A shape as a list of [row, col] cells, from its top left. */
 function parseShape(text) {
@@ -359,11 +363,29 @@ function scoreFor(cellCount, lineCount, streak) {
   return cellCount + LINE_POINTS * lineCount * (lineCount + 1) / 2 * streak;
 }
 
-/* A tray of pieces, each a shape (an index into PIECES) and a colour. */
-function dealTray(rand) {
-  return Array.from({ length: TRAY }, function () {
-    return { shape: Math.floor(rand() * PIECES.length), colour: 1 + Math.floor(rand() * COLOURS) };
+/* A shape, as an index into PIECES, drawn by the weights in FAMILIES. */
+function dealShape(rand) {
+  var total = FAMILIES.reduce(function (sum, family) { return sum + family.weight; }, 0);
+  var roll = rand() * total;
+  var k = 0;
+  while (roll >= FAMILIES[k].weight) {
+    roll -= FAMILIES[k].weight;
+    k++;
+  }
+  var shapes = FAMILIES[k].shapes;
+  return SHAPES.indexOf(shapes[Math.floor(rand() * shapes.length)]);
+}
+
+/* A tray of pieces, each a shape (an index into PIECES) and a colour, drawn
+ * again until one fits on board, unless no piece at all would. */
+function dealTray(rand, board) {
+  var tray = Array.from({ length: TRAY }, function () {
+    return { shape: dealShape(rand), colour: 1 + Math.floor(rand() * COLOURS) };
   });
+  if (!canPlaceAny(board, PIECES)) return tray;
+  var pieces = tray.map(function (piece) { return PIECES[piece.shape]; });
+  if (canPlaceAny(board, pieces)) return tray;
+  return dealTray(rand, board);
 }
 
 /* progress holds the best score. */
@@ -553,7 +575,7 @@ function init() {
     }
     board = result.board;
     paint(board, [], []);
-    if (waiting().length === 0) tray = dealTray(rand);
+    if (waiting().length === 0) tray = dealTray(rand, board);
     renderTray();
     busy = false;
     var left = waiting().map(function (piece) { return PIECES[piece.shape]; });
@@ -573,7 +595,7 @@ function init() {
 
   function newGame() {
     board = emptyBoard();
-    tray = dealTray(rand);
+    tray = dealTray(rand, board);
     score = 0;
     streak = 0;
     paint(board, [], []);
