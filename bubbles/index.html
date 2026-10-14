@@ -213,16 +213,16 @@ var WIDTH = COLS + 0.5;
 var SHOOTER = { x: WIDTH / 2, y: ROWS * H + 1.2 };
 var VIEW = SHOOTER.y + 0.9;
 var COLOURS = [4, 5, 6, 7];
-var MODES = ['endless', 'puzzle'];
-var START_ROWS = { endless: 5, puzzle: 8 };
+var MODES = ['puzzle', 'endless'];
+var START_ROWS = { endless: 5, puzzle: 9 };
 /* Endless: a new row pushes in every FIRST_ROW shots at first, a shot sooner
  * for every two rows pushed, down to every FASTEST_ROW shots.
  * Puzzle: the ceiling drops a row after SHOTS shots. */
 var FIRST_ROW = 8;
 var FASTEST_ROW = 3;
-var SHOTS = 8;
+var SHOTS = 7;
 /* How likely a new board copies a neighbour's colour, so it has groups to pop. */
-var CLUMP = 0.5;
+var CLUMP = { endless: 0.5, puzzle: 0.4 };
 /* A popped bubble scores POINTS; the nth bubble a shot drops scores n * DROP.
  * The lot is multiplied by the combo: how many shots in a row have popped,
  * up to MAX_COMBO. */
@@ -418,7 +418,7 @@ function newBoard(rand, colours, mode) {
     for (var c = 0; c < COLS; c++) {
       var colour = Math.floor(rand() * colours);
       var near = neighbours(board, r, c).filter(function (cell) { return board.cells[cell[0]][cell[1]] !== null; });
-      if (near.length > 0 && rand() < CLUMP) {
+      if (near.length > 0 && rand() < CLUMP[mode]) {
         var pick = near[Math.floor(rand() * near.length)];
         colour = board.cells[pick[0]][pick[1]];
       }
@@ -525,7 +525,7 @@ function init() {
   var NAMES = { endless: 'Endless', puzzle: 'Puzzle' };
 
   var rand = rng(Math.floor(Math.random() * 4294967296));
-  var progress = load() || { best: {}, mode: 'endless', colours: 5 };
+  var progress = load() || { best: {}, mode: 'puzzle', colours: 5 };
   var board = null;
   /* The bubble to shoot and the one after it. */
   var queue = [];

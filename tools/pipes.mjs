@@ -8,7 +8,8 @@ if (!match) throw new Error('could not find <script id="app"> in index.html');
 
 const EXPORTS = [
   'LEVELS', 'MIN_PIPE', 'COLOURS', 'rng', 'neighbours', 'towards', 'isTight', 'tile', 'needsEveryCell', 'generate', 'newGame',
-  'withPath', 'endAt', 'pathAt', 'isConnected', 'pickUp', 'extend', 'drawTo', 'filled', 'connectedCount', 'isSolved'
+  'withPath', 'endAt', 'pathAt', 'isConnected', 'pickUp', 'extend', 'drawTo', 'filled', 'connectedCount', 'isSolved',
+  'serialize', 'deserialize'
 ];
 
 const factory = new Function(`${match[1]}\nreturn { ${EXPORTS.join(', ')} };`);

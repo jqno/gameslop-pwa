@@ -243,6 +243,7 @@ var COLOURS = [
   '#f032e6', '#bfef45', '#fabed4', '#469990', '#dcbeff', '#9a6324', '#aaffc3',
   '#ffffff', '#9ca3af'
 ];
+var STORAGE_KEY = 'pipes.v1';
 /* How many steps the solver may take to prove a puzzle has one answer
  * before it gives up on it; real puzzles take a few hundred at most. */
 var SEARCH_LIMIT = 100000;
@@ -578,6 +579,24 @@ function isSolved(game) {
   return connectedCount(game) === game.ends.length && filled(game) === game.size * game.size;
 }
 
+/* Only the level last played is kept, by name. */
+function serialize(level) {
+  return JSON.stringify({ version: 1, level: level.name });
+}
+
+function deserialize(text) {
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+  if (!data || data.version !== 1) return null;
+  var level = LEVELS.filter(function (l) { return l.name === data.level; })[0];
+  if (level === undefined) return null;
+  return level;
+}
+
 /* ------------------------------------------------------------------ *
  * UI
  * ------------------------------------------------------------------ */
@@ -594,7 +613,7 @@ function init() {
   var metaEl = document.getElementById('meta');
 
   var rand = rng(Math.floor(Math.random() * 4294967296));
-  var level = LEVELS[0];
+  var level = load() || LEVELS[0];
   var game = newGame(generate(level, rand));
   /* Whether a game is under way; not once it has been solved. */
   var playing = false;
@@ -602,6 +621,22 @@ function init() {
   var choice = level;
   /* The pipe being drawn, while a finger or the mouse is down. */
   var drawing = null;
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, serialize(level));
+    } catch (e) {
+      /* private mode / quota: the game still works, it just forgets. */
+    }
+  }
+
+  function load() {
+    try {
+      return deserialize(localStorage.getItem(STORAGE_KEY));
+    } catch (e) {
+      return null;
+    }
+  }
 
   function showMeta() {
     var percent = Math.floor(100 * filled(game) / (game.size * game.size));
@@ -645,6 +680,7 @@ function init() {
 
   function start(next) {
     level = next;
+    save();
     game = newGame(generate(level, rand));
     drawing = null;
     playing = true;

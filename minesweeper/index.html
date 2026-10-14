@@ -407,9 +407,14 @@ function formatTime(seconds) {
   return Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
 }
 
-/* progress.best maps a level's name to its fastest clear in seconds. */
+/* progress.best maps a level's name to its fastest clear in seconds;
+ * progress.level is the name of the level last played, if any. */
 function serialize(progress) {
-  return JSON.stringify({ version: 1, best: progress.best });
+  return JSON.stringify({ version: 1, best: progress.best, level: progress.level });
+}
+
+function levelNamed(name) {
+  return LEVELS.filter(function (level) { return level.name === name; })[0];
 }
 
 function deserialize(text) {
@@ -421,11 +426,11 @@ function deserialize(text) {
   }
   if (!data || data.version !== 1 || !data.best || typeof data.best !== 'object') return null;
   var ok = Object.keys(data.best).every(function (name) {
-    var known = LEVELS.some(function (level) { return level.name === name; });
-    return known && Number.isInteger(data.best[name]) && data.best[name] >= 0;
+    return levelNamed(name) !== undefined && Number.isInteger(data.best[name]) && data.best[name] >= 0;
   });
   if (!ok) return null;
-  return { best: data.best };
+  if (data.level !== undefined && levelNamed(data.level) === undefined) return null;
+  return { best: data.best, level: data.level };
 }
 
 /* ------------------------------------------------------------------ *
@@ -449,7 +454,7 @@ function init() {
 
   var rand = rng(Math.floor(Math.random() * 4294967296));
   var progress = load() || { best: {} };
-  var level = LEVELS[0];
+  var level = levelNamed(progress.level) || LEVELS[0];
   var game = newGame(level);
   var cellEls = [];
   /* Whether a game is under way; not once it has been won or lost. */
@@ -578,6 +583,8 @@ function init() {
 
   function start(next) {
     level = next;
+    progress.level = level.name;
+    save();
     game = newGame(level);
     started = 0;
     clearInterval(ticker);

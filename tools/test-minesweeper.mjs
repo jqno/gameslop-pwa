@@ -133,6 +133,9 @@ test('progress survives a save, and bad saves are rejected', () => {
   eq(M.deserialize(JSON.stringify({ version: 2, best: {} })), null, 'other version');
   eq(M.deserialize(JSON.stringify({ version: 1, best: { Easy: 2.5 } })), null, 'fractional best');
   eq(M.deserialize(JSON.stringify({ version: 1, best: { Huge: 5 } })), null, 'unknown level');
+  eq(M.deserialize(M.serialize({ best: {}, level: 'Hard' })).level, 'Hard', 'level');
+  eq(M.deserialize(JSON.stringify({ version: 1, best: { Easy: 42 } })).best.Easy, 42, 'saved before the level was');
+  eq(M.deserialize(JSON.stringify({ version: 1, best: {}, level: 'Huge' })), null, 'unknown level picked');
 });
 
 console.log(`\n${count - failures}/${count} passed`);

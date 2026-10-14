@@ -223,5 +223,13 @@ test('connected pipes are not enough: every cell must be filled', () => {
   eq(P.filled(game), 9, 'filled');
 });
 
+test('the level survives a save, and bad saves are rejected', () => {
+  eq(P.deserialize(P.serialize(P.LEVELS[2])), P.LEVELS[2], 'level');
+  eq(P.deserialize(null), null, 'null');
+  eq(P.deserialize('not json'), null, 'garbage');
+  eq(P.deserialize(JSON.stringify({ version: 2, level: 'Easy' })), null, 'other version');
+  eq(P.deserialize(JSON.stringify({ version: 1, level: 'Huge' })), null, 'unknown level');
+});
+
 console.log(`\n${count - failures}/${count} passed`);
 process.exit(failures ? 1 : 0);
