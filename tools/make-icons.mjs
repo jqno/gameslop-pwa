@@ -7,7 +7,8 @@
  * squares for Takuzu, and rows of bricks with a ball on its way back up from
  * the paddle for Breakout, a patch of 2 and 4 tiles for 2048, and a small
  * board of regions with a star in each for Star Battle, and an invader with
- * the cannon's shot on its way up to it for Space Invaders.
+ * the cannon's shot on its way up to it for Space Invaders, and a bird
+ * heading for the gap between two pipes for Flappy.
  * Each icon is a scene over the unit square, supersampled for smooth
  * edges. Everything sits inside the maskable safe zone (radius 0.4). */
 import { deflateSync } from 'node:zlib';
@@ -518,7 +519,33 @@ function invaders() {
   };
 }
 
-const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper], ['pipes/', pipes], ['takuzu/', takuzu], ['breakout/', breakout], ['2048/', twentyFortyEight], ['stars/', starBattle], ['invaders/', invaders]];
+/* --- flappy: a bird flying towards the gap between two pipes --------- */
+
+function flappy() {
+  const pipe = { left: 0.58, right: 0.72, top: 0.38, bottom: 0.62, lip: 0.025, lipH: 0.05 };
+  const inPipe = (x, y) => {
+    const inGap = y > pipe.top && y < pipe.bottom;
+    const inShaft = x >= pipe.left && x <= pipe.right && y >= 0.2 && y <= 0.8 && !inGap;
+    const nearLip = Math.abs(y - pipe.top + pipe.lipH / 2) <= pipe.lipH / 2 || Math.abs(y - pipe.bottom - pipe.lipH / 2) <= pipe.lipH / 2;
+    const inLip = nearLip && x >= pipe.left - pipe.lip && x <= pipe.right + pipe.lip;
+    return inShaft || inLip;
+  };
+  const bird = [0.38, 0.52];
+  const radius = 0.075;
+  return (x, y) => {
+    const dx = x - bird[0];
+    const dy = y - bird[1];
+    if (Math.hypot(dx - radius * 0.38, dy + radius * 0.3) <= radius * 0.13) return BG;
+    if (Math.hypot(dx - radius * 0.38, dy + radius * 0.3) <= radius * 0.3) return PAPER;
+    if (Math.hypot(dx, dy) <= radius) return ORANGE;
+    if (dx > 0 && dx <= radius * 1.5 && Math.abs(dy - 0.012) <= 0.022 * (1 - dx / (radius * 1.5))) return mix(ORANGE, PAPER, 0.5);
+    if (inPipe(x, y)) return BLUE;
+    if ([[0.26, 0.56], [0.2, 0.58]].some(([tx, ty]) => Math.hypot(x - tx, y - ty) <= 0.012)) return mix(BG, ORANGE, 0.6);
+    return BG;
+  };
+}
+
+const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper], ['pipes/', pipes], ['takuzu/', takuzu], ['breakout/', breakout], ['2048/', twentyFortyEight], ['stars/', starBattle], ['invaders/', invaders], ['flappy/', flappy]];
 for (const [dir, scene] of ICONS) {
   for (const size of [192, 512]) {
     const name = `${dir}icon-${size}.png`;

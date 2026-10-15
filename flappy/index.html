@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flappy</title>
+<meta name="description" content="Flap through the gaps between the pipes.">
+<meta name="theme-color" content="#0f1420">
+<link rel="manifest" href="../manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gameslop">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root {
+  color-scheme: light dark;
+  --width: min(100%, 520px);
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --ink: #1b2130;
+  --muted: #6b7382;
+  --btn: #ffffff;
+  --btnline: #ccd2dd;
+  --sel: #cfe0ff;
+  --accent: #2358c8;
+  --board: #e3e7ee;
+  --g0: #e0454f;
+  --g1: #f08c1c;
+  --g2: #e2bb12;
+  --g3: #2fae5a;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1420;
+    --panel: #161c2b;
+    --ink: #e7ebf3;
+    --muted: #8b95a8;
+    --btn: #1c2334;
+    --btnline: #313a50;
+    --sel: #2b456f;
+    --accent: #79a8ff;
+    --board: #161c2b;
+    --g0: #ff6b6b;
+    --g1: #ffa94d;
+    --g2: #ffd84a;
+    --g3: #4fd17a;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+header {
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+h1 { flex: 1; font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercase; }
+.meta { font-size: 14px; line-height: 1.25; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; white-space: pre; }
+a.key, button.key {
+  font: inherit;
+  background: var(--btn);
+  color: var(--ink);
+  border: 1px solid var(--btnline);
+  border-radius: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+a.key { display: flex; align-items: center; justify-content: center; padding: 0 14px; font-size: 22px; text-decoration: none; }
+button.key { padding: 10px 26px; font-size: 16px; font-weight: 600; }
+button.key.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.key:active { background: var(--sel); }
+/* The stage takes whatever height is left; the script sizes the field to the
+ * largest it can be inside it. Tapping anywhere on it flaps. */
+.stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+.board {
+  display: block;
+  border-radius: 14px;
+  background: var(--board);
+}
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+  background: rgba(8, 12, 22, .45);
+}
+.overlay[hidden] { display: none; }
+.overlay > div {
+  width: min(100%, 340px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 26px 20px;
+  text-align: center;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 18px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .35);
+  animation: pop .3s ease-out;
+}
+.overlay strong { font-size: 28px; line-height: 1.1; color: var(--accent); }
+.overlay p { margin: 0; color: var(--muted); }
+.overlay p#ov-best { color: var(--ink); font-weight: 600; }
+@keyframes pop {
+  from { opacity: 0; transform: scale(.85); }
+  to { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <a class="key" href="../" aria-label="Main menu">←</a>
+  <h1>Flappy</h1>
+  <span class="meta" id="meta"></span>
+</header>
+<div class="stage" id="stage">
+  <canvas class="board" id="board"></canvas>
+</div>
+<div class="overlay" id="overlay">
+  <div>
+    <strong id="ov-title"></strong>
+    <p id="ov-text"></p>
+    <p id="ov-best"></p>
+    <button class="key primary" id="ov-go" type="button">Play</button>
+  </div>
+</div>
+<script id="app">
+'use strict';
+
+/* ------------------------------------------------------------------ *
+ * Rules
+ * ------------------------------------------------------------------ */
+
+/* The field is WIDTH by HEIGHT, with y going down, and the ground at GROUND.
+ * The bird is a circle of radius BIRD_R that stays at BIRD_X: world.y is the
+ * y of its middle and world.vy how fast it falls. The pipes scroll left
+ * towards it: world.pipes holds them, each { x, gap, passed } with x its left
+ * side and gap the middle of the opening, GAP high, between its two halves. */
+var WIDTH = 10;
+var HEIGHT = 14;
+var GROUND = 12.5;
+var BIRD_X = 3;
+var BIRD_R = 0.35;
+var GRAVITY = 32;
+var FLAP = -9.5;
+var MAX_FALL = 14;
+var SPEED = 3.2;
+var PIPE_W = 1.6;
+var GAP = 3.8;
+/* From one pipe's left side to the next one's: SPACING, give or take up to
+ * JITTER. */
+var SPACING = 5.2;
+var JITTER = 0.7;
+/* The middle of a gap stays MARGIN from the top and the ground, and at most
+ * SHIFT from the one before; less when the pipes are closer than SPACING. */
+var MARGIN = 1;
+var SHIFT = 4;
+var GAP_LOW = MARGIN + GAP / 2;
+var GAP_HIGH = GROUND - MARGIN - GAP / 2;
+/* The first pipe comes in from FIRST. */
+var FIRST = WIDTH + 1;
+/* Things move at most STEP at a time. */
+var STEP = 0.05;
+var STORAGE_KEY = 'flappy.v1';
+
+function rng(seed) {
+  var a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    var t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* The gap of the pipe spacing after one with its gap at prev. */
+function nextGap(prev, spacing, rand) {
+  var shift = SHIFT * Math.min(1, (spacing - PIPE_W) / (SPACING - PIPE_W));
+  var gap = prev + (rand() * 2 - 1) * shift;
+  return Math.max(GAP_LOW, Math.min(GAP_HIGH, gap));
+}
+
+function nextSpacing(rand) {
+  return SPACING + (rand() * 2 - 1) * JITTER;
+}
+
+function newWorld(rand) {
+  var gap = nextGap((GAP_LOW + GAP_HIGH) / 2, SPACING, rand);
+  return { y: GROUND / 2, vy: 0, pipes: [{ x: FIRST, gap: gap, passed: false }] };
+}
+
+/* The world with the bird flapping upwards. */
+function flap(world) {
+  return Object.assign({}, world, { vy: FLAP });
+}
+
+/* Whether the bird, with its middle at y, touches the pipe. */
+function hitsPipe(y, pipe) {
+  var dx = Math.max(pipe.x - BIRD_X, 0, BIRD_X - (pipe.x + PIPE_W));
+  if (dx >= BIRD_R) return false;
+  /* How far the bird's edge reaches up and down at that distance. */
+  var reach = Math.sqrt(BIRD_R * BIRD_R - dx * dx);
+  return y - reach < pipe.gap - GAP / 2 || y + reach > pipe.gap + GAP / 2;
+}
+
+/* The world dt seconds on: the bird falls and the pipes scroll by, a step
+ * at a time, with the next pipe lined up off screen as soon as the last one
+ * comes into view. Also how many
+ * pipes the bird got past, and whether it crashed into a pipe or the
+ * ground. Above the top it just bumps its head. */
+function advance(world, dt, rand) {
+  var y = world.y;
+  var vy = world.vy;
+  var pipes = world.pipes;
+  var passed = 0;
+  var dead = false;
+  var steps = Math.max(1, Math.ceil(Math.max(SPEED, Math.abs(vy) + GRAVITY * dt) * dt / STEP));
+  var h = dt / steps;
+
+  for (var k = 0; k < steps && !dead; k++) {
+    vy = Math.min(MAX_FALL, vy + GRAVITY * h);
+    y += vy * h;
+    if (y < BIRD_R) {
+      y = BIRD_R;
+      vy = Math.max(0, vy);
+    }
+    pipes = pipes
+      .map(function (p) {
+        var x = p.x - SPEED * h;
+        var past = !p.passed && x + PIPE_W < BIRD_X - BIRD_R;
+        if (past) passed++;
+        return { x: x, gap: p.gap, passed: p.passed || past };
+      })
+      .filter(function (p) { return p.x + PIPE_W > 0; });
+    var last = pipes[pipes.length - 1];
+    if (last.x < WIDTH) {
+      var spacing = nextSpacing(rand);
+      pipes = pipes.concat([{ x: last.x + spacing, gap: nextGap(last.gap, spacing, rand), passed: false }]);
+    }
+    var nowY = y;
+    if (y + BIRD_R >= GROUND) {
+      y = GROUND - BIRD_R;
+      dead = true;
+    } else if (pipes.some(function (p) { return hitsPipe(nowY, p); })) {
+      dead = true;
+    }
+  }
+
+  return { world: { y: y, vy: vy, pipes: pipes }, passed: passed, dead: dead };
+}
+
+/* progress holds the best score. */
+function serialize(progress) {
+  return JSON.stringify({ version: 1, best: progress.best });
+}
+
+function deserialize(text) {
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+  if (!data || data.version !== 1) return null;
+  if (!Number.isInteger(data.best) || data.best < 0) return null;
+  return { best: data.best };
+}
+
+/* ------------------------------------------------------------------ *
+ * UI
+ * ------------------------------------------------------------------ */
+
+function init() {
+  var stageEl = document.getElementById('stage');
+  var canvas = document.getElementById('board');
+  var ctx = canvas.getContext('2d');
+  var overlayEl = document.getElementById('overlay');
+  var titleEl = document.getElementById('ov-title');
+  var textEl = document.getElementById('ov-text');
+  var goBtn = document.getElementById('ov-go');
+  var bestEl = document.getElementById('ov-best');
+  var metaEl = document.getElementById('meta');
+
+  /* After crashing, everything stays put this long before the popup. */
+  var DEAD_MS = 800;
+  /* The pipes' lips stick out LIP on each side and are LIP_H high. */
+  var LIP = 0.12;
+  var LIP_H = 0.45;
+
+  var rand = rng(Math.floor(Math.random() * 4294967296));
+  var progress = load() || { best: 0 };
+  var world = null;
+  var score = 0;
+  /* Whether a game is under way; not while the popup is up. */
+  var running = false;
+  /* Until the first flap the bird hovers and nothing moves. */
+  var waiting = true;
+  /* When the bird crashed, or 0. */
+  var deadAt = 0;
+  var last = 0;
+  var scale = 1;
+  var colours = {};
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, serialize(progress));
+    } catch (e) {
+      /* private mode / quota: the game still works, it just forgets. */
+    }
+  }
+
+  function load() {
+    try {
+      return deserialize(localStorage.getItem(STORAGE_KEY));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function readColours() {
+    var style = getComputedStyle(document.documentElement);
+    var get = function (name) { return style.getPropertyValue(name).trim(); };
+    colours = {
+      pipe: get('--g3'),
+      ground: get('--btnline'),
+      bird: get('--g2'),
+      beak: get('--g1'),
+      eye: get('--panel'),
+      ink: get('--ink'),
+      crash: get('--g0'),
+      text: get('--muted')
+    };
+  }
+
+  function resize() {
+    var rect = stageEl.getBoundingClientRect();
+    scale = Math.min(rect.width / WIDTH, rect.height / HEIGHT);
+    var dpr = window.devicePixelRatio || 1;
+    canvas.style.width = WIDTH * scale + 'px';
+    canvas.style.height = HEIGHT * scale + 'px';
+    canvas.width = Math.round(WIDTH * scale * dpr);
+    canvas.height = Math.round(HEIGHT * scale * dpr);
+    draw(performance.now());
+  }
+
+  function text(line, size, weight, y) {
+    ctx.fillStyle = colours.text;
+    ctx.textAlign = 'center';
+    ctx.font = weight + ' ' + size + 'px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText(line, WIDTH / 2, y);
+  }
+
+  function pipe(p) {
+    var top = p.gap - GAP / 2;
+    var bottom = p.gap + GAP / 2;
+    ctx.fillStyle = colours.pipe;
+    ctx.fillRect(p.x, 0, PIPE_W, top);
+    ctx.fillRect(p.x - LIP, top - LIP_H, PIPE_W + 2 * LIP, LIP_H);
+    ctx.fillRect(p.x, bottom, PIPE_W, GROUND - bottom);
+    ctx.fillRect(p.x - LIP, bottom, PIPE_W + 2 * LIP, LIP_H);
+  }
+
+  /* The bird at y, nose up when rising and down when falling. */
+  function bird(y, colour) {
+    var tilt = Math.max(-0.5, Math.min(1.2, world.vy / MAX_FALL * 1.4));
+    if (waiting) tilt = 0;
+    ctx.save();
+    ctx.translate(BIRD_X, y);
+    ctx.rotate(tilt);
+    ctx.fillStyle = colours.beak;
+    ctx.beginPath();
+    ctx.moveTo(BIRD_R * 0.6, -0.1);
+    ctx.lineTo(BIRD_R * 1.45, 0.02);
+    ctx.lineTo(BIRD_R * 0.6, 0.14);
+    ctx.fill();
+    ctx.fillStyle = colour;
+    ctx.beginPath();
+    ctx.arc(0, 0, BIRD_R, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = colours.eye;
+    ctx.beginPath();
+    ctx.arc(BIRD_R * 0.38, -BIRD_R * 0.3, BIRD_R * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = colours.ink;
+    ctx.beginPath();
+    ctx.arc(BIRD_R * 0.48, -BIRD_R * 0.3, BIRD_R * 0.13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function draw(now) {
+    var dpr = canvas.width / (WIDTH * scale);
+    ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+    ctx.clearRect(0, 0, WIDTH, HEIGHT);
+    if (world === null) return;
+    world.pipes.forEach(pipe);
+    ctx.fillStyle = colours.ground;
+    ctx.fillRect(0, GROUND, WIDTH, HEIGHT - GROUND);
+    var y = world.y;
+    if (waiting) y += Math.sin(now / 180) * 0.15;
+    if (deadAt > 0) {
+      bird(y, colours.crash);
+    } else {
+      bird(y, colours.bird);
+    }
+    text(String(score), 1.1, 700, 1.6);
+    if (running && waiting) text('Tap to flap', 0.55, 600, HEIGHT * 0.62);
+  }
+
+  function showMeta() {
+    metaEl.textContent = 'Score ' + score + '\nBest ' + progress.best;
+  }
+
+  function update(dt, now) {
+    if (waiting || deadAt > 0) return;
+    var result = advance(world, dt, rand);
+    world = result.world;
+    score += result.passed;
+    if (result.dead) deadAt = now;
+    showMeta();
+  }
+
+  function frame(now) {
+    if (!running) return;
+    var dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    update(dt, now);
+    draw(now);
+    if (deadAt > 0 && now - deadAt >= DEAD_MS) finish();
+    if (running) requestAnimationFrame(frame);
+  }
+
+  function finish() {
+    running = false;
+    var text = 'You flew past ' + score + ' pipes.';
+    if (score === 1) text = 'You flew past 1 pipe.';
+    if (score > progress.best) {
+      if (progress.best > 0) text += ' New best!';
+      progress.best = score;
+      save();
+    }
+    showMeta();
+    overlay('Game over', text, 'Play again');
+  }
+
+  function newGame() {
+    score = 0;
+    waiting = true;
+    deadAt = 0;
+    world = newWorld(rand);
+    showMeta();
+    draw(performance.now());
+  }
+
+  function overlay(title, text, button) {
+    titleEl.textContent = title;
+    textEl.textContent = text;
+    goBtn.textContent = button;
+    if (progress.best > 0) {
+      bestEl.textContent = 'Best: ' + progress.best + ' pipes';
+    } else {
+      bestEl.textContent = 'No best yet';
+    }
+    overlayEl.hidden = false;
+    goBtn.focus();
+  }
+
+  function start() {
+    if (running) return;
+    overlayEl.hidden = true;
+    newGame();
+    running = true;
+    last = performance.now();
+    requestAnimationFrame(frame);
+  }
+
+  function tap() {
+    if (!running || deadAt > 0) return;
+    waiting = false;
+    world = flap(world);
+  }
+
+  goBtn.addEventListener('click', start);
+
+  stageEl.addEventListener('pointerdown', function (ev) {
+    ev.preventDefault();
+    tap();
+  });
+
+  var FLAPS = [' ', 'ArrowUp', 'w', 'W'];
+  document.addEventListener('keydown', function (ev) {
+    if (FLAPS.indexOf(ev.key) < 0 || ev.repeat || !running) return;
+    ev.preventDefault();
+    tap();
+  });
+
+  readColours();
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+    readColours();
+    draw(performance.now());
+  });
+  new ResizeObserver(resize).observe(stageEl);
+  newGame();
+  overlay('Flappy', 'Tap to flap your wings and fly through the gaps between the pipes. Don’t touch the pipes or the ground. Every pipe you pass is a point.', 'Play');
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('../sw.js').catch(function () {
+        /* file:// or no HTTPS: the app runs fine, it just is not installable. */
+      });
+    });
+  }
+}
+
+if (typeof document !== 'undefined') init();
+</script>
+</body>
+</html>

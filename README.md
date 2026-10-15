@@ -12,5 +12,6 @@ Gameslop is a progressive web app full of small games:
 - 2048
 - Star Battle
 - Space Invaders
+- Flappy (a clone of Flappy Bird)
 
 I totally vibecoded this. I'm sorry...
