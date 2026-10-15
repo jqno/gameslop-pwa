@@ -1,6 +1,5 @@
 # Game ideas
 
-- [ ] Star Battle
 - [ ] Flappy (a clone of Flappy Bird)
 - [ ] FreeCell
 - [ ] Nonograms (a.k.a. Picross), with real pictures

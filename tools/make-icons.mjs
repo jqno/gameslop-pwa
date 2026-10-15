@@ -5,7 +5,8 @@
  * minefield with a flag on its one mine for Minesweeper, and a grid filled
  * with three connected pipes for Pipe Connect, and a grid of blue and orange
  * squares for Takuzu, and rows of bricks with a ball on its way back up from
- * the paddle for Breakout, and a patch of 2 and 4 tiles for 2048.
+ * the paddle for Breakout, a patch of 2 and 4 tiles for 2048, and a small
+ * board of regions with a star in each for Star Battle.
  * Each icon is a scene over the unit square, supersampled for smooth
  * edges. Everything sits inside the maskable safe zone (radius 0.4). */
 import { deflateSync } from 'node:zlib';
@@ -442,7 +443,62 @@ function twentyFortyEight() {
   };
 }
 
-const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper], ['pipes/', pipes], ['takuzu/', takuzu], ['breakout/', breakout], ['2048/', twentyFortyEight]];
+/* --- star battle: a 4x4 board, one star per row, column and region ----- */
+
+/* Whether x, y is inside the polygon with these corners. */
+function inPolygon(x, y, corners) {
+  let inside = false;
+  for (let k = 0, j = corners.length - 1; k < corners.length; j = k++) {
+    const [xk, yk] = corners[k];
+    const [xj, yj] = corners[j];
+    if ((yk > y) !== (yj > y) && x < (xj - xk) * (y - yk) / (yj - yk) + xk) inside = !inside;
+  }
+  return inside;
+}
+
+function starBattle() {
+  const n = 4;
+  const board = 0.56;
+  const origin = (1 - board) / 2;
+  const cell = board / n;
+  const thin = cell * 0.025;
+  const thick = cell * 0.06;
+  const regions = '0011021122312333';
+  const stars = [[0, 1], [1, 3], [2, 0], [3, 2]];
+  /* A five-pointed star, point up, in a unit box around 0, 0. */
+  const shape = Array.from({ length: 10 }, (_, k) => {
+    const r = k % 2 === 0 ? 0.5 : 0.2;
+    const t = -Math.PI / 2 + k * Math.PI / 5;
+    return [r * Math.cos(t), r * Math.sin(t) + 0.04];
+  });
+  const region = (r, c) => {
+    if (r < 0 || c < 0 || r >= n || c >= n) return -1;
+    return regions[r * n + c];
+  };
+  return (x, y) => {
+    const bx = x - origin;
+    const by = y - origin;
+    if (!inRoundedBox(bx - board / 2, by - board / 2, board / 2 + thick, board / 2 + thick, cell * 0.12)) return BG;
+    const c = Math.min(n - 1, Math.max(0, Math.floor(bx / cell)));
+    const r = Math.min(n - 1, Math.max(0, Math.floor(by / cell)));
+    const fx = bx / cell - c;
+    const fy = by / cell - r;
+    const own = region(r, c);
+    const sides = [[fx * cell, r, c - 1], [(1 - fx) * cell, r, c + 1], [fy * cell, r - 1, c], [(1 - fy) * cell, r + 1, c]];
+    for (const [d, nr, nc] of sides) {
+      if (d <= thick && region(nr, nc) !== own) return INK;
+    }
+    if (bx < 0 || by < 0 || bx > board || by > board) return INK;
+    for (const [d] of sides) {
+      if (d <= thin) return LINE;
+    }
+    const starred = stars.some(([sr, sc]) => sr === r && sc === c);
+    if (starred && inPolygon((fx - 0.5) / 0.85, (fy - 0.5) / 0.85, shape)) return ORANGE;
+    return PAPER;
+  };
+}
+
+const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper], ['pipes/', pipes], ['takuzu/', takuzu], ['breakout/', breakout], ['2048/', twentyFortyEight], ['stars/', starBattle]];
 for (const [dir, scene] of ICONS) {
   for (const size of [192, 512]) {
     const name = `${dir}icon-${size}.png`;

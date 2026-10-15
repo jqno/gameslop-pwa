@@ -10,5 +10,6 @@ Gameslop is a progressive web app full of small games:
 - Takuzu (a.k.a. Binairo)
 - Breakout
 - 2048
+- Star Battle
 
 I totally vibecoded this. I'm sorry...

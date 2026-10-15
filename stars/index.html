@@ -1,0 +1,1327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Star Battle</title>
+<meta name="description" content="Place a star in every row, column and region: a Star Battle puzzle that generates itself in your browser.">
+<meta name="theme-color" content="#0f1420">
+<link rel="manifest" href="../manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gameslop">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root {
+  color-scheme: light dark;
+  --width: min(100%, 520px);
+  --n: 8;
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --ink: #1b2130;
+  --muted: #6b7382;
+  --line: #d3d8e2;
+  --edge: #2a3143;
+  --sel: #cfe0ff;
+  --bad: #d64545;
+  --badbg: #fbe3e3;
+  --hint: #e08a00;
+  --star: #e08a00;
+  --btn: #ffffff;
+  --btnline: #ccd2dd;
+  --accent: #2358c8;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1420;
+    --panel: #161c2b;
+    --ink: #e7ebf3;
+    --muted: #8b95a8;
+    --line: #2b3346;
+    --edge: #8a94a8;
+    --sel: #2b456f;
+    --bad: #ff7b7b;
+    --badbg: #45222a;
+    --hint: #ffb454;
+    --star: #ffb454;
+    --btn: #1c2334;
+    --btnline: #313a50;
+    --accent: #79a8ff;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+header {
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+h1 { font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercase; }
+.meta { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+button.key, a.key {
+  font: inherit;
+  background: var(--btn);
+  color: var(--ink);
+  border: 1px solid var(--btnline);
+  border-radius: 10px;
+  padding: 12px 0;
+  min-height: 48px;
+  cursor: pointer;
+}
+button.key:active { background: var(--sel); }
+button.key:disabled { opacity: .4; cursor: default; }
+button.key.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* A link, since it leaves the page; laid out like the buttons around it. */
+a.key { display: flex; align-items: center; justify-content: center; padding: 0 10px; font-size: 22px; text-decoration: none; }
+/* Back leaves for the main menu; New and Restart throw the game away; Check,
+ * Hint and Undo help you play. The rules between them say which is which. */
+.actions {
+  position: relative;
+  flex: none;
+  width: var(--width);
+  display: grid;
+  grid-template-columns: auto auto 1fr 1fr auto 1fr 1fr 1fr;
+  gap: 6px;
+}
+.actions button.key { font-size: 14px; padding-inline: 4px; }
+.sep { width: 1px; margin: 6px 3px; background: var(--btnline); border-radius: 1px; }
+/* The New menu hangs below its button. */
+.menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 10px);
+  z-index: 5;
+  width: min(100%, 300px);
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--btnline);
+  border-radius: 14px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .28);
+}
+/* Without this, display: grid above would beat the hidden attribute. */
+.menu[hidden] { display: none; }
+.menu h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+#menu-diff { grid-template-columns: repeat(3, 1fr); }
+.chip {
+  font: inherit;
+  font-size: 14px;
+  min-height: 38px;
+  border: 1px solid var(--btnline);
+  border-radius: 8px;
+  background: var(--btn);
+  color: var(--ink);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.menu p { margin: 0; font-size: 14px; font-weight: 600; text-align: center; }
+.menu .go { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+/* The stage takes whatever height is left, and the board is the largest
+ * square that fits in it. */
+.stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+}
+/* Each cell draws its own top and left border, thick where a region ends;
+ * the board draws the bottom and right ones. */
+.board {
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+  display: grid;
+  grid-template-columns: repeat(var(--n), 1fr);
+  grid-template-rows: repeat(var(--n), 1fr);
+  background: var(--panel);
+  border-right: 3px solid var(--edge);
+  border-bottom: 3px solid var(--edge);
+  border-radius: 2px;
+}
+/* A star is a star shape; a dot marks a cell that holds no star. */
+.cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  cursor: pointer;
+}
+.cell::before { content: ''; }
+.cell.dot::before { width: 16%; height: 16%; border-radius: 50%; background: var(--muted); }
+.cell.star::before {
+  width: 72%;
+  height: 72%;
+  background: var(--star);
+  clip-path: polygon(50% 0, 62% 35%, 98% 35%, 69% 57%, 79% 92%, 50% 71%, 21% 92%, 31% 57%, 2% 35%, 38% 35%);
+}
+.cell.bad { background: var(--badbg); }
+.cell.bad.star::before { background: var(--bad); }
+.cell.hint { animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse {
+  0%, 100% { box-shadow: inset 0 0 0 2px var(--hint); }
+  50% { box-shadow: inset 0 0 0 4px var(--hint); }
+}
+.status { flex: none; margin: 0; min-height: 38px; font-size: 14px; color: var(--muted); text-align: center; }
+.status.win { color: var(--accent); font-weight: 600; }
+.status .why { display: block; font-size: 13px; }
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+  background: rgba(8, 12, 22, .45);
+}
+.overlay[hidden] { display: none; }
+.overlay > div {
+  width: min(100%, 340px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 26px 20px;
+  text-align: center;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 18px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .35);
+  animation: pop .3s ease-out;
+}
+.overlay strong { font-size: 28px; line-height: 1.1; color: var(--accent); }
+.overlay p { margin: 0; color: var(--muted); white-space: pre-line; }
+.overlay button.key { padding: 10px 20px; font-size: 16px; font-weight: 600; }
+@keyframes pop {
+  from { opacity: 0; transform: scale(.85); }
+  to { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Star Battle</h1>
+  <span class="meta" id="meta"></span>
+</header>
+<div class="actions">
+  <a class="key" href="../" aria-label="Main menu">←</a>
+  <span class="sep" aria-hidden="true"></span>
+  <button class="key" id="new" type="button" aria-haspopup="true" aria-expanded="false">New</button>
+  <button class="key" id="restart" type="button">Restart</button>
+  <span class="sep" aria-hidden="true"></span>
+  <button class="key" id="check" type="button">Check</button>
+  <button class="key" id="hintbtn" type="button">Hint</button>
+  <button class="key" id="undo" type="button">Undo</button>
+  <div class="menu" id="menu" hidden>
+    <h2>Difficulty</h2>
+    <div class="chips" id="menu-diff"></div>
+    <h2>Size</h2>
+    <div class="chips" id="menu-size"></div>
+    <p id="menu-best"></p>
+    <div class="go">
+      <button class="key" id="menu-cancel" type="button">Cancel</button>
+      <button class="key primary" id="menu-start" type="button">Start</button>
+    </div>
+  </div>
+</div>
+<div class="stage">
+  <div class="board" id="board"></div>
+</div>
+<p class="status" id="status"></p>
+<div class="overlay" id="overlay">
+  <div>
+    <strong id="ov-title"></strong>
+    <p id="ov-text"></p>
+    <button class="key" id="dismiss" type="button">Back to the board</button>
+  </div>
+</div>
+<script id="app">
+'use strict';
+
+/* ------------------------------------------------------------------ *
+ * Rules
+ * ------------------------------------------------------------------ */
+
+/* The grid is size x size cells, row by row, cut into size regions; regions
+ * holds each cell's region, from 0. Every row, column and region holds
+ * STARS stars, and no two stars touch, not even diagonally. A cell on the
+ * board is EMPTY, a DOT (marked as holding no star) or a STAR.
+ *
+ * The rules work for more stars, but two stars on 10x10, the usual size for
+ * them, takes far too long to generate in the browser. */
+var SIZES = [5, 6, 7, 8];
+var STARS = 1;
+var EMPTY = 0;
+var DOT = 1;
+var STAR = 2;
+var STORAGE_KEY = 'stars.v1';
+var BEST_STORAGE_KEY = 'stars.best.v1';
+var UNDO_LIMIT = 200;
+
+/* What the solver may reason with at each difficulty. Every level marks
+ * the cells around a star, fills up a row, column or region that has its
+ * stars, and stars the cells that every way left to fit a unit's stars
+ * uses. squeeze looks at what a star in a cell would leave room for; band
+ * is how many rows or columns in a run it counts regions in. */
+var DIFFICULTIES = {
+  easy: { label: 'Easy', squeeze: false, band: 1 },
+  medium: { label: 'Medium', squeeze: true, band: 1 },
+  hard: { label: 'Hard', squeeze: true, band: 9 }
+};
+/* How many nudges to give a layout before starting over, and to make one
+ * harder than an easier level can work out. */
+var NUDGES = 400;
+
+function rng(seed) {
+  var a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    var t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffle(a, rand) {
+  var out = a.slice();
+  for (var i = out.length - 1; i > 0; i--) {
+    var j = Math.floor(rand() * (i + 1));
+    var t = out[i];
+    out[i] = out[j];
+    out[j] = t;
+  }
+  return out;
+}
+
+function range(n) {
+  return Array.from({ length: n }, function (_, i) { return i; });
+}
+
+function plural(n, word) {
+  if (n === 1) return word;
+  return word + 's';
+}
+
+function touching(size, a, b) {
+  var dr = Math.abs(Math.floor(a / size) - Math.floor(b / size));
+  var dc = Math.abs(a % size - b % size);
+  return a !== b && dr <= 1 && dc <= 1;
+}
+
+/* The up to eight cells around i. */
+function around(size, i) {
+  var r = Math.floor(i / size);
+  var c = i % size;
+  var out = [];
+  for (var dr = -1; dr <= 1; dr++) {
+    for (var dc = -1; dc <= 1; dc++) {
+      var r2 = r + dr;
+      var c2 = c + dc;
+      if ((dr !== 0 || dc !== 0) && r2 >= 0 && r2 < size && c2 >= 0 && c2 < size) out.push(r2 * size + c2);
+    }
+  }
+  return out;
+}
+
+/* Every row, column and region as { kind, cells }, worked out once per puzzle. */
+var unitsCache = new WeakMap();
+function unitsOf(puzzle) {
+  if (unitsCache.has(puzzle)) return unitsCache.get(puzzle);
+  var size = puzzle.size;
+  var rows = range(size).map(function (r) {
+    return { kind: 'row', cells: range(size).map(function (c) { return r * size + c; }) };
+  });
+  var cols = range(size).map(function (c) {
+    return { kind: 'column', cells: range(size).map(function (r) { return r * size + c; }) };
+  });
+  var regions = range(size).map(function () { return { kind: 'region', cells: [] }; });
+  puzzle.regions.forEach(function (id, i) { regions[id].cells.push(i); });
+  var units = rows.concat(cols, regions);
+  unitsCache.set(puzzle, units);
+  return units;
+}
+
+/* Every way to put need stars on cells without two touching, each as a list
+ * of cells. */
+function fits(size, cells, need) {
+  if (need === 0) return [[]];
+  if (need === 1) return cells.map(function (c) { return [c]; });
+  var out = [];
+  cells.forEach(function (c, k) {
+    var rest = cells.slice(k + 1).filter(function (d) { return !touching(size, c, d); });
+    fits(size, rest, need - 1).forEach(function (way) { out.push([c].concat(way)); });
+  });
+  return out;
+}
+
+/* Whether need stars fit on cells without two touching. */
+function canFit(size, cells, need) {
+  if (need <= 0) return true;
+  if (need === 1) return cells.length > 0;
+  return cells.some(function (c, k) {
+    var rest = cells.slice(k + 1).filter(function (d) { return !touching(size, c, d); });
+    return canFit(size, rest, need - 1);
+  });
+}
+
+function countOf(values, cells, value) {
+  return cells.filter(function (i) { return values[i] === value; }).length;
+}
+
+/* The values after the obvious: the cells around every star, and the rest of
+ * every unit that has its stars, marked with a dot. */
+function markObvious(puzzle, values) {
+  var size = puzzle.size;
+  var next = values.slice();
+  values.forEach(function (v, i) {
+    if (v !== STAR) return;
+    around(size, i).forEach(function (j) {
+      if (next[j] === EMPTY) next[j] = DOT;
+    });
+  });
+  unitsOf(puzzle).forEach(function (unit) {
+    if (countOf(values, unit.cells, STAR) < puzzle.stars) return;
+    unit.cells.forEach(function (i) {
+      if (next[i] === EMPTY) next[i] = DOT;
+    });
+  });
+  return next;
+}
+
+/* The first unit that a star on i would leave without room for its stars,
+ * or null. */
+function squeezed(puzzle, units, values, i) {
+  var size = puzzle.size;
+  var blocked = {};
+  blocked[i] = true;
+  around(size, i).forEach(function (j) { blocked[j] = true; });
+  var mine = units.map(function (unit) { return unit.cells.indexOf(i) >= 0; });
+  units.forEach(function (unit, u) {
+    if (mine[u] && countOf(values, unit.cells, STAR) + 1 === puzzle.stars) {
+      unit.cells.forEach(function (j) { blocked[j] = true; });
+    }
+  });
+  for (var u = 0; u < units.length; u++) {
+    var cells = units[u].cells;
+    var need = puzzle.stars - countOf(values, cells, STAR);
+    if (mine[u]) need--;
+    var open = cells.filter(function (j) { return values[j] === EMPTY && !blocked[j]; });
+    if (!canFit(size, open, need)) return units[u];
+  }
+  return null;
+}
+
+/* Every empty cell that can be worked out, each once and by the simplest
+ * reasoning that finds it, as { idx, value, technique, obvious }. */
+function allPlacements(puzzle, values, opts) {
+  var size = puzzle.size;
+  var stars = puzzle.stars;
+  var units = unitsOf(puzzle);
+  var found = {};
+  function add(idx, value, technique, obvious) {
+    if (found[idx] === undefined) found[idx] = { idx: idx, value: value, technique: technique, obvious: obvious };
+  }
+
+  values.forEach(function (v, i) {
+    if (v !== STAR) return;
+    around(size, i).forEach(function (j) {
+      if (values[j] === EMPTY) add(j, DOT, 'Stars may not touch, not even diagonally', true);
+    });
+  });
+
+  units.forEach(function (unit) {
+    var have = countOf(values, unit.cells, STAR);
+    var open = unit.cells.filter(function (i) { return values[i] === EMPTY; });
+    if (have === stars) {
+      open.forEach(function (i) { add(i, DOT, 'This ' + unit.kind + ' already has its ' + plural(stars, 'star'), true); });
+    } else if (open.length === stars - have) {
+      open.forEach(function (i) { add(i, STAR, 'Only room left for the ' + plural(stars - have, 'star') + ' this ' + unit.kind + ' needs', false); });
+    }
+  });
+
+  units.forEach(function (unit) {
+    var need = stars - countOf(values, unit.cells, STAR);
+    var open = unit.cells.filter(function (i) { return values[i] === EMPTY; });
+    if (need <= 0) return;
+    var ways = fits(size, open, need);
+    open.forEach(function (i) {
+      var always = ways.length > 0 && ways.every(function (way) { return way.indexOf(i) >= 0; });
+      if (always) add(i, STAR, 'Every way to fit the stars of this ' + unit.kind + ' uses this cell', false);
+    });
+  });
+
+  if (opts.squeeze) {
+    values.forEach(function (v, i) {
+      if (v !== EMPTY) return;
+      var unit = squeezed(puzzle, units, values, i);
+      if (unit !== null) add(i, DOT, 'A star here would leave no room for the stars of a ' + unit.kind, false);
+    });
+  }
+
+  /* A run of n rows (or columns) holds n units' worth of stars. When n
+   * regions fit inside it, those are its stars; when only n regions reach
+   * into it, its stars are theirs. */
+  if (opts.band > 0) {
+    var regions = units.filter(function (unit) { return unit.kind === 'region'; });
+    ['row', 'column'].forEach(function (kind) {
+      var lineOf = function (i) {
+        if (kind === 'row') return Math.floor(i / size);
+        return i % size;
+      };
+      /* For each region, which lines its cells that may hold a star are on. */
+      var spans = regions.map(function (region) {
+        var on = new Array(size).fill(false);
+        region.cells.forEach(function (i) {
+          if (values[i] !== DOT) on[lineOf(i)] = true;
+        });
+        return on;
+      });
+      for (var a = 0; a < size; a++) {
+        for (var b = a; b < Math.min(size - 1, a + opts.band); b++) {
+          var n = b - a + 1;
+          var inBand = function (i) { return lineOf(i) >= a && lineOf(i) <= b; };
+          var inside = [];
+          var reaching = [];
+          spans.forEach(function (on, id) {
+            var within = on.filter(function (yes, line) { return yes && line >= a && line <= b; }).length;
+            if (within === on.filter(Boolean).length) inside.push(id);
+            if (within > 0) reaching.push(id);
+          });
+          var these = 'this ' + kind;
+          var regionsWord = 'a region';
+          var fit = 'fits';
+          if (n > 1) {
+            these = 'these ' + n + ' ' + kind + 's';
+            regionsWord = n + ' regions';
+            fit = 'fit';
+          }
+          if (inside.length === n) {
+            values.forEach(function (v, i) {
+              if (v === EMPTY && inBand(i) && inside.indexOf(puzzle.regions[i]) < 0) {
+                add(i, DOT, 'The stars of ' + these + ' go to ' + regionsWord + ' that ' + fit + ' inside', false);
+              }
+            });
+          }
+          if (reaching.length === n) {
+            values.forEach(function (v, i) {
+              if (v === EMPTY && !inBand(i) && reaching.indexOf(puzzle.regions[i]) >= 0) {
+                add(i, DOT, 'Only ' + regionsWord + ' can put stars in ' + these + ', so all their stars go there', false);
+              }
+            });
+          }
+        }
+      }
+    });
+  }
+
+  return Object.keys(found).map(function (k) { return found[k]; });
+}
+
+/* Fills in whatever can be worked out until nothing more can. The costlier
+ * reasoning only comes in once the cheaper has nothing left. */
+function solveLogically(puzzle, values, opts) {
+  var stages = [{ squeeze: false, band: 0 }, { squeeze: false, band: Math.min(1, opts.band) }, { squeeze: opts.squeeze, band: Math.min(1, opts.band) }, opts];
+  var v = values.slice();
+  for (var k = 0; k < stages.length; k++) {
+    var steps = allPlacements(puzzle, v, stages[k]);
+    if (steps.length > 0) {
+      steps.forEach(function (s) { v[s.idx] = s.value; });
+      k = -1;
+    }
+  }
+  return v;
+}
+
+function decided(values) {
+  return values.filter(function (v) { return v !== EMPTY; }).length;
+}
+
+function isFull(values) {
+  return values.indexOf(EMPTY) < 0;
+}
+
+/* The stars that break a rule: touching another, or one too many in a row,
+ * column or region. */
+function conflicts(puzzle, values) {
+  var size = puzzle.size;
+  var bad = new Set();
+  values.forEach(function (v, i) {
+    if (v !== STAR) return;
+    around(size, i).forEach(function (j) {
+      if (values[j] === STAR) bad.add(i);
+    });
+  });
+  unitsOf(puzzle).forEach(function (unit) {
+    var mine = unit.cells.filter(function (i) { return values[i] === STAR; });
+    if (mine.length > puzzle.stars) mine.forEach(function (i) { bad.add(i); });
+  });
+  return Array.from(bad).sort(function (a, b) { return a - b; });
+}
+
+function isSolved(puzzle, values) {
+  return countOf(values, range(values.length), STAR) === puzzle.size * puzzle.stars && conflicts(puzzle, values).length === 0;
+}
+
+/* A grid of stars within the rules, without the regions: 1 where a star goes,
+ * row by row, each row picked at random from the ways that still fit. */
+function placeStars(size, stars, rand) {
+  var ways = fits(size, range(size), stars);
+  var cols = new Array(size).fill(0);
+  var rows = [];
+  function place(r) {
+    if (r === size) return true;
+    /* A column can only get a star every other row. */
+    var room = Math.ceil((size - r) / 2);
+    if (cols.some(function (n) { return stars - n > room; })) return false;
+    var prev = rows[r - 1] || [];
+    var options = shuffle(ways, rand).filter(function (way) {
+      return way.every(function (c) {
+        return cols[c] < stars && prev.every(function (p) { return Math.abs(p - c) > 1; });
+      });
+    });
+    for (var k = 0; k < options.length; k++) {
+      options[k].forEach(function (c) { cols[c]++; });
+      rows[r] = options[k];
+      if (place(r + 1)) return true;
+      options[k].forEach(function (c) { cols[c]--; });
+    }
+    return false;
+  }
+  place(0);
+  var solution = new Array(size * size).fill(0);
+  rows.forEach(function (way, r) {
+    way.forEach(function (c) { solution[r * size + c] = 1; });
+  });
+  return solution;
+}
+
+/* Regions grown at random around the stars: each starts from one star and
+ * takes in neighbouring cells, but never a star past its share. Starts over
+ * when a star is left that no region may take. */
+function growRegions(size, stars, solution, rand) {
+  for (;;) {
+    var regions = new Array(size * size).fill(-1);
+    var count = new Array(size).fill(0);
+    var starCells = shuffle(range(size * size).filter(function (i) { return solution[i] === 1; }), rand);
+    starCells.slice(0, size).forEach(function (i, id) {
+      regions[i] = id;
+      count[id] = 1;
+    });
+    var left = size * size - size;
+    while (left > 0) {
+      var options = range(size).map(function () { return []; });
+      regions.forEach(function (id, i) {
+        if (id < 0) return;
+        var r = Math.floor(i / size);
+        var c = i % size;
+        [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]].forEach(function (rc) {
+          if (rc[0] < 0 || rc[0] >= size || rc[1] < 0 || rc[1] >= size) return;
+          var j = rc[0] * size + rc[1];
+          if (regions[j] >= 0) return;
+          if (solution[j] === 1 && count[id] >= stars) return;
+          options[id].push(j);
+        });
+      });
+      var growing = range(size).filter(function (id) { return options[id].length > 0; });
+      if (growing.length === 0) break;
+      var id = growing[Math.floor(rand() * growing.length)];
+      var cell = options[id][Math.floor(rand() * options[id].length)];
+      if (regions[cell] < 0) {
+        regions[cell] = id;
+        count[id] += solution[cell];
+        left--;
+      }
+    }
+    if (left === 0) return regions;
+  }
+}
+
+/* Whether the cells of region id, without cell, still hang together. */
+function connectedWithout(puzzle, id, cell) {
+  var size = puzzle.size;
+  var cells = range(size * size).filter(function (i) { return puzzle.regions[i] === id && i !== cell; });
+  var seen = {};
+  var todo = [cells[0]];
+  while (todo.length > 0) {
+    var i = todo.pop();
+    if (seen[i]) continue;
+    seen[i] = true;
+    around(size, i).forEach(function (j) {
+      var orthogonal = Math.floor(j / size) === Math.floor(i / size) || j % size === i % size;
+      if (orthogonal && cells.indexOf(j) >= 0) todo.push(j);
+    });
+  }
+  return Object.keys(seen).length === cells.length;
+}
+
+/* The puzzle with one cell without a star moved over to a neighbouring
+ * region, or null when the cell picked can not move. */
+function nudge(puzzle, rand) {
+  var size = puzzle.size;
+  var cell = Math.floor(rand() * size * size);
+  if (puzzle.solution[cell] === 1) return null;
+  var from = puzzle.regions[cell];
+  var others = around(size, cell).filter(function (j) {
+    var orthogonal = Math.floor(j / size) === Math.floor(cell / size) || j % size === cell % size;
+    return orthogonal && puzzle.regions[j] !== from;
+  });
+  if (others.length === 0 || !connectedWithout(puzzle, from, cell)) return null;
+  var regions = puzzle.regions.slice();
+  regions[cell] = puzzle.regions[others[Math.floor(rand() * others.length)]];
+  return { size: size, stars: puzzle.stars, difficulty: puzzle.difficulty, regions: regions, solution: puzzle.solution };
+}
+
+/* Random regions around random stars rarely make a puzzle with one answer,
+ * so the regions are nudged a cell at a time, keeping every nudge that lets
+ * the solver for opts work out at least as much, until it works out every
+ * cell. That also makes the answer unique. */
+function design(difficulty, size, opts, rand) {
+  var blank = new Array(size * size).fill(EMPTY);
+  for (;;) {
+    var solution = placeStars(size, STARS, rand);
+    var regions = growRegions(size, STARS, solution, rand);
+    var puzzle = { size: size, stars: STARS, difficulty: difficulty, regions: regions, solution: solution };
+    var score = decided(solveLogically(puzzle, blank, opts));
+    for (var k = 0; k < NUDGES && score < size * size; k++) {
+      var next = nudge(puzzle, rand);
+      if (next === null) continue;
+      var nextScore = decided(solveLogically(next, blank, opts));
+      if (nextScore >= score) {
+        puzzle = next;
+        score = nextScore;
+      }
+    }
+    if (score === size * size) return puzzle;
+  }
+}
+
+/* A puzzle is { size, stars, difficulty, regions, solution }. A level that
+ * reasons with more than the one below goes on nudging it, keeping every
+ * nudge that it can still work out and the level below can work out no more
+ * of, until that level gets stuck. It settles after NUDGES. */
+function generate(difficulty, size, rand) {
+  var keys = Object.keys(DIFFICULTIES);
+  var opts = DIFFICULTIES[difficulty];
+  var easier = DIFFICULTIES[keys[keys.indexOf(difficulty) - 1]];
+  var blank = new Array(size * size).fill(EMPTY);
+  var puzzle = design(difficulty, size, opts, rand);
+  if (easier === undefined) return puzzle;
+  var score = decided(solveLogically(puzzle, blank, easier));
+  for (var k = 0; k < NUDGES && score === size * size; k++) {
+    var next = nudge(puzzle, rand);
+    if (next === null || !isFull(solveLogically(next, blank, opts))) continue;
+    var nextScore = decided(solveLogically(next, blank, easier));
+    if (nextScore <= score) {
+      puzzle = next;
+      score = nextScore;
+    }
+  }
+  return puzzle;
+}
+
+/* A tap cycles a cell through empty, dot and star. */
+function cycle(value) {
+  if (value === EMPTY) return DOT;
+  if (value === DOT) return STAR;
+  return EMPTY;
+}
+
+/* --- persistence ----------------------------------------------------- */
+
+function isCellArray(a, size, allowed) {
+  if (!Array.isArray(a) || a.length !== size * size) return false;
+  return a.every(function (v) { return allowed.indexOf(v) >= 0; });
+}
+
+/* Every cell in a region from 0 to size - 1, and every region used. */
+function isRegions(a, size) {
+  if (!isCellArray(a, size, range(size))) return false;
+  return range(size).every(function (id) { return a.indexOf(id) >= 0; });
+}
+
+function serialize(puzzle, state) {
+  return JSON.stringify({
+    version: 1,
+    puzzle: puzzle,
+    state: { values: state.values, undo: state.undo, hints: state.hints, elapsed: state.elapsed }
+  });
+}
+
+function deserialize(text) {
+  if (!text) return null;
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+  if (!data || data.version !== 1 || !data.puzzle || !data.state) return null;
+  var p = data.puzzle;
+  var s = data.state;
+  if (SIZES.indexOf(p.size) < 0 || p.stars !== STARS) return null;
+  if (!DIFFICULTIES[p.difficulty]) return null;
+  if (!isRegions(p.regions, p.size)) return null;
+  if (!isCellArray(p.solution, p.size, [0, 1])) return null;
+  if (!isCellArray(s.values, p.size, [EMPTY, DOT, STAR])) return null;
+  if (!Array.isArray(s.undo)) return null;
+  if (!Array.isArray(s.hints) || !s.hints.every(function (h) { return typeof h === 'string'; })) return null;
+  if (!Number.isInteger(s.elapsed) || s.elapsed < 0) return null;
+  return {
+    puzzle: { size: p.size, stars: p.stars, difficulty: p.difficulty, regions: p.regions, solution: p.solution },
+    state: { values: s.values, undo: s.undo.slice(-UNDO_LIMIT), hints: s.hints, elapsed: s.elapsed }
+  };
+}
+
+function freshState(puzzle) {
+  return { values: new Array(puzzle.size * puzzle.size).fill(EMPTY), undo: [], hints: [], elapsed: 0 };
+}
+
+/* --- solve times ----------------------------------------------------- */
+
+/* m:ss, or h:mm:ss once past the hour. */
+function formatTime(ms) {
+  var total = Math.floor(ms / 1000);
+  var h = Math.floor(total / 3600);
+  var m = Math.floor(total / 60) % 60;
+  var ss = String(total % 60).padStart(2, '0');
+  if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + ss;
+  return m + ':' + ss;
+}
+
+/* The best time is kept per difficulty and size, under this key. */
+function bestKey(difficulty, size) {
+  return difficulty + '/' + size;
+}
+
+function isBestKey(key) {
+  return Object.keys(DIFFICULTIES).some(function (difficulty) {
+    return SIZES.some(function (size) { return bestKey(difficulty, size) === key; });
+  });
+}
+
+/* The bests are a map from bestKey to the fastest solve in milliseconds. */
+function deserializeBest(text) {
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return {};
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
+  var ok = Object.keys(data).every(function (key) {
+    return isBestKey(key) && Number.isInteger(data[key]) && data[key] >= 0;
+  });
+  if (!ok) return {};
+  return data;
+}
+
+/* ------------------------------------------------------------------ *
+ * UI
+ * ------------------------------------------------------------------ */
+
+function init() {
+  var boardEl = document.getElementById('board');
+  var statusEl = document.getElementById('status');
+  var metaEl = document.getElementById('meta');
+  var menuEl = document.getElementById('menu');
+  var newBtn = document.getElementById('new');
+  var overlayEl = document.getElementById('overlay');
+  var dismissBtn = document.getElementById('dismiss');
+
+  var rand = rng(Math.floor(Math.random() * 4294967296));
+  var puzzle = null;
+  var state = null;
+  var hintCells = [];
+  /* The cells Check found breaking a rule, until the next move. */
+  var badCells = [];
+  var hintList = [];
+  var hintAt = 0;
+  var solved = false;
+  var cellEls = [];
+  var best = loadBest();
+  /* When the clock last started or was read, or null while it is stopped. */
+  var clockFrom = null;
+
+  function save() {
+    foldClock();
+    try {
+      localStorage.setItem(STORAGE_KEY, serialize(puzzle, state));
+    } catch (e) {
+      /* private mode / quota: the game still works, it just forgets. */
+    }
+  }
+
+  function load() {
+    try {
+      return deserialize(localStorage.getItem(STORAGE_KEY));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveBest() {
+    try {
+      localStorage.setItem(BEST_STORAGE_KEY, JSON.stringify(best));
+    } catch (e) {
+      /* as in save() */
+    }
+  }
+
+  function loadBest() {
+    try {
+      return deserializeBest(localStorage.getItem(BEST_STORAGE_KEY));
+    } catch (e) {
+      return {};
+    }
+  }
+
+  /* Adds the time since the clock last started or was read to the puzzle. */
+  function foldClock() {
+    if (clockFrom === null) return;
+    var now = performance.now();
+    state.elapsed += Math.round(now - clockFrom);
+    clockFrom = now;
+  }
+
+  /* The clock only runs while the board is on screen and has focus, and stops
+   * once the puzzle is solved. */
+  function syncClock() {
+    foldClock();
+    var watching = document.visibilityState === 'visible' && document.hasFocus();
+    if (!watching || solved) {
+      clockFrom = null;
+    } else if (clockFrom === null) {
+      clockFrom = performance.now();
+    }
+  }
+
+  function overlay(title, text, button) {
+    document.getElementById('ov-title').textContent = title;
+    document.getElementById('ov-text').textContent = text;
+    dismissBtn.textContent = button;
+    overlayEl.hidden = false;
+    dismissBtn.focus();
+  }
+
+  function announceWin() {
+    var key = bestKey(puzzle.difficulty, puzzle.size);
+    var before = best[key];
+    /* Times are shown in whole seconds, so they are compared that way too:
+     * a solve that shows the same time as the best does not beat it. */
+    var faster = before === undefined || Math.floor(state.elapsed / 1000) < Math.floor(before / 1000);
+    var bestText = '';
+    /* A solve with hints never counts as a best. */
+    if (state.hints.length && before !== undefined) {
+      bestText = 'Hints used, so no best · Best: ' + formatTime(before);
+    } else if (state.hints.length) {
+      bestText = 'Hints used, so no best';
+    } else if (faster && before !== undefined) {
+      bestText = 'New best! Was ' + formatTime(before);
+    } else if (before !== undefined) {
+      bestText = 'Best: ' + formatTime(before);
+    }
+    if (faster && !state.hints.length) {
+      best[key] = state.elapsed;
+      saveBest();
+    }
+    save();
+    var text = 'Time: ' + formatTime(state.elapsed);
+    if (bestText) text += '\n' + bestText;
+    overlay('Solved!', text, 'Back to the board');
+  }
+
+  function buildGrid() {
+    var size = puzzle.size;
+    document.documentElement.style.setProperty('--n', String(size));
+    boardEl.textContent = '';
+    cellEls = puzzle.regions.map(function (id, i) {
+      var el = document.createElement('div');
+      el.className = 'cell';
+      el.dataset.idx = String(i);
+      var topEdge = i < size || puzzle.regions[i - size] !== id;
+      var leftEdge = i % size === 0 || puzzle.regions[i - 1] !== id;
+      el.style.borderTop = topEdge ? '3px solid var(--edge)' : '1px solid var(--line)';
+      el.style.borderLeft = leftEdge ? '3px solid var(--edge)' : '1px solid var(--line)';
+      boardEl.appendChild(el);
+      return el;
+    });
+  }
+
+  function render() {
+    cellEls.forEach(function (el, i) {
+      var value = state.values[i];
+      el.classList.toggle('dot', value === DOT);
+      el.classList.toggle('star', value === STAR);
+      el.classList.toggle('bad', badCells.indexOf(i) >= 0);
+      el.classList.toggle('hint', hintCells.indexOf(i) >= 0);
+    });
+    document.getElementById('undo').disabled = state.undo.length === 0;
+    var wasSolved = solved;
+    solved = isSolved(puzzle, state.values);
+    syncClock();
+    if (solved && !wasSolved) announceWin();
+    if (solved) {
+      statusEl.textContent = 'Solved. Nice one.';
+      statusEl.className = 'status win';
+    } else if (statusEl.className === 'status win') {
+      statusEl.textContent = '';
+      statusEl.className = 'status';
+    }
+  }
+
+  /* Two deliberate lines: the verdict, then the reason under it, so the
+   * message never wraps mid-phrase. */
+  function setHint(step) {
+    if (step.value === STAR) {
+      setStatus('This cell must hold a star');
+    } else {
+      setStatus('This cell can not hold a star');
+    }
+    var why = document.createElement('span');
+    why.className = 'why';
+    why.textContent = step.technique;
+    statusEl.appendChild(why);
+  }
+
+  function setStatus(text) {
+    statusEl.textContent = text;
+    statusEl.className = 'status';
+  }
+
+  function pushUndo(cells) {
+    state.undo.push(cells);
+    if (state.undo.length > UNDO_LIMIT) state.undo.shift();
+  }
+
+  /* Every distinct hint shown counts once, so asking for the same one again
+   * is free. */
+  function countHint(key) {
+    if (state.hints.indexOf(key) >= 0) return;
+    state.hints.push(key);
+    save();
+    renderMeta();
+  }
+
+  function clearHint() {
+    hintCells = [];
+    badCells = [];
+    hintList = [];
+    hintAt = 0;
+  }
+
+  function tap(i) {
+    pushUndo([{ idx: i, value: state.values[i] }]);
+    state.values[i] = cycle(state.values[i]);
+    clearHint();
+    setStatus('');
+    save();
+    render();
+  }
+
+  function undo() {
+    var entry = state.undo.pop();
+    if (!entry) return;
+    entry.forEach(function (e) { state.values[e.idx] = e.value; });
+    clearHint();
+    setStatus('');
+    save();
+    render();
+  }
+
+  function restartPuzzle() {
+    var touched = range(puzzle.size * puzzle.size)
+      .filter(function (i) { return state.values[i] !== EMPTY; })
+      .map(function (i) { return { idx: i, value: state.values[i] }; });
+    if (touched.length === 0) return;
+    if (!confirm('Restart this puzzle? Your stars and dots will be cleared.')) return;
+    touched.forEach(function (t) { state.values[t.idx] = EMPTY; });
+    pushUndo(touched);
+    clearHint();
+    setStatus('');
+    save();
+    render();
+  }
+
+  /* A star where none goes, or a dot where one does. */
+  function wrongCells() {
+    return range(puzzle.size * puzzle.size).filter(function (i) {
+      if (state.values[i] === STAR) return puzzle.solution[i] !== 1;
+      if (state.values[i] === DOT) return puzzle.solution[i] === 1;
+      return false;
+    });
+  }
+
+  /* Shows the stars that break a rule. Anything else that is wrong it only
+   * mentions, without saying where: that takes a hint. */
+  function check() {
+    clearHint();
+    badCells = conflicts(puzzle, state.values);
+    if (badCells.length) {
+      setStatus('The red stars break a rule.');
+    } else if (wrongCells().length) {
+      setStatus('Something on the board is wrong. Press Hint to see where.');
+    } else {
+      setStatus('No mistakes so far.');
+    }
+    render();
+  }
+
+  /* The cells that can be worked out from the board as it stands, stars
+   * first. The dots that follow straight from a star or a full row, column
+   * or region are taken as read rather than hinted. */
+  function hintSteps() {
+    var known = markObvious(puzzle, state.values);
+    var steps = allPlacements(puzzle, known, DIFFICULTIES[puzzle.difficulty]);
+    var stars = steps.filter(function (s) { return s.value === STAR; });
+    var dots = steps.filter(function (s) { return s.value === DOT; });
+    return stars.concat(dots);
+  }
+
+  function hint() {
+    var wrong = wrongCells();
+    if (wrong.length) {
+      hintCells = wrong;
+      countHint('wrong:' + wrong.join(','));
+      setStatus(wrong.length === 1 ? 'This cell is wrong.' : 'These cells are wrong.');
+      render();
+      return;
+    }
+    /* Hint again on an unchanged board moves on to the next cell that can be
+     * worked out, for when this one's reasoning will not come. Any move clears
+     * the list, so the next hint starts from the board as it then stands. */
+    if (hintList.length) {
+      hintAt = (hintAt + 1) % hintList.length;
+    } else {
+      hintList = hintSteps();
+      hintAt = 0;
+    }
+    if (hintList.length) {
+      var step = hintList[hintAt];
+      hintCells = [step.idx];
+      countHint('cell:' + step.idx);
+      setHint(step);
+      render();
+      return;
+    }
+    var missing = range(puzzle.size * puzzle.size).filter(function (i) {
+      return puzzle.solution[i] === 1 && state.values[i] !== STAR;
+    });
+    if (missing.length === 0) {
+      setStatus('Every star is already in place.');
+      render();
+      return;
+    }
+    hintCells = [missing[0]];
+    countHint('cell:' + missing[0]);
+    setStatus('This cell must hold a star.');
+    render();
+  }
+
+  function startPuzzle(newPuzzle) {
+    puzzle = newPuzzle;
+    clockFrom = null;
+    solved = false;
+    state = freshState(puzzle);
+    clearHint();
+    buildGrid();
+    renderMeta();
+    save();
+    render();
+  }
+
+  function newPuzzle(difficulty, size) {
+    setStatus('Generating...');
+    /* Let the status paint before the synchronous generator blocks. */
+    setTimeout(function () {
+      startPuzzle(generate(difficulty, size, rand));
+      setStatus('');
+    }, 20);
+  }
+
+  function hasProgress() {
+    return state.values.some(function (v) { return v !== EMPTY; });
+  }
+
+  function renderMeta() {
+    var text = DIFFICULTIES[puzzle.difficulty].label + ' · ' + puzzle.size + '×' + puzzle.size;
+    var used = state.hints.length;
+    if (used === 1) {
+      text += ' · 1 hint';
+    } else if (used > 1) {
+      text += ' · ' + used + ' hints';
+    }
+    metaEl.textContent = text;
+  }
+
+  /* --- the New menu: pick a difficulty and a size, then start --- */
+
+  var choice = { difficulty: 'medium', size: 6 };
+
+  /* Only flips aria-pressed: rebuilding the chips would detach the one just
+   * tapped, and the outside-tap check would then close the menu under you. */
+  function renderMenu() {
+    menuEl.querySelectorAll('#menu-diff .chip').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.diff === choice.difficulty));
+    });
+    menuEl.querySelectorAll('#menu-size .chip').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(Number(b.dataset.size) === choice.size));
+    });
+    var time = best[bestKey(choice.difficulty, choice.size)];
+    if (time === undefined) {
+      document.getElementById('menu-best').textContent = 'No best yet';
+    } else {
+      document.getElementById('menu-best').textContent = 'Best: ' + formatTime(time);
+    }
+  }
+
+  function openMenu() {
+    choice = { difficulty: puzzle.difficulty, size: puzzle.size };
+    renderMenu();
+    menuEl.hidden = false;
+    newBtn.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeMenu() {
+    menuEl.hidden = true;
+    newBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  function chip(label, onPick) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip';
+    b.textContent = label;
+    b.addEventListener('click', function () {
+      onPick();
+      renderMenu();
+    });
+    return b;
+  }
+
+  /* --- wiring --- */
+
+  Object.keys(DIFFICULTIES).forEach(function (key) {
+    var b = chip(DIFFICULTIES[key].label, function () { choice.difficulty = key; });
+    b.dataset.diff = key;
+    document.getElementById('menu-diff').appendChild(b);
+  });
+  SIZES.forEach(function (size) {
+    var b = chip(size + '×' + size, function () { choice.size = size; });
+    b.dataset.size = String(size);
+    document.getElementById('menu-size').appendChild(b);
+  });
+
+  boardEl.addEventListener('click', function (ev) {
+    var cell = ev.target.closest('.cell');
+    if (!cell) return;
+    tap(Number(cell.dataset.idx));
+  });
+
+  dismissBtn.addEventListener('click', function () { overlayEl.hidden = true; });
+  document.getElementById('undo').addEventListener('click', undo);
+  document.getElementById('restart').addEventListener('click', restartPuzzle);
+  document.getElementById('check').addEventListener('click', check);
+  document.getElementById('hintbtn').addEventListener('click', hint);
+  newBtn.addEventListener('click', function () {
+    if (menuEl.hidden) {
+      openMenu();
+    } else {
+      closeMenu();
+    }
+  });
+  document.getElementById('menu-cancel').addEventListener('click', closeMenu);
+  document.getElementById('menu-start').addEventListener('click', function () {
+    closeMenu();
+    if (hasProgress() && !solved && !confirm('Start a new puzzle? This one will be lost.')) return;
+    newPuzzle(choice.difficulty, choice.size);
+  });
+  /* A tap anywhere outside the menu puts it away, as a popup should. */
+  document.addEventListener('click', function (ev) {
+    if (menuEl.hidden) return;
+    if (menuEl.contains(ev.target)) return;
+    if (newBtn.contains(ev.target)) return;
+    closeMenu();
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    syncClock();
+    save();
+  });
+  window.addEventListener('focus', syncClock);
+  window.addEventListener('blur', syncClock);
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    /* While the menu is open, keys belong to it and not to the board. */
+    if (!menuEl.hidden) {
+      if (ev.key === 'Escape') closeMenu();
+      return;
+    }
+    if (ev.key === 'u') undo();
+    if (ev.key === 'h') hint();
+    if (ev.key === 'c') check();
+  });
+
+  var restored = load();
+  if (restored) {
+    puzzle = restored.puzzle;
+    state = restored.state;
+    /* A solved puzzle comes back solved, without announcing it again. */
+    solved = isSolved(puzzle, state.values);
+    buildGrid();
+    renderMeta();
+    render();
+  } else {
+    startPuzzle(generate('medium', 6, rand));
+  }
+  overlay('Star Battle', 'Put a star in every row, every column and every outlined region, one each. Stars may not touch, not even diagonally. Tap a cell once for a dot, to mark that it holds no star, and again for a star.', 'Play');
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('../sw.js').catch(function () {
+        /* file:// or no HTTPS: the app runs fine, it just is not installable. */
+      });
+    });
+  }
+}
+
+if (typeof document !== 'undefined') init();
+</script>
+</body>
+</html>
