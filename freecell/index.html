@@ -565,9 +565,10 @@ function init() {
     });
   }
 
-  /* How far apart the cards of a cascade are, squeezed to fit the board. */
+  /* How far apart the cards of a cascade are: spread out over the board's
+   * height, squeezed when a cascade gets long. */
   function fan(length) {
-    var step = dims.h * 0.3;
+    var step = dims.h * 0.45;
     if (length <= 1) return step;
     var room = (dims.height - dims.top - dims.h) / (length - 1);
     return Math.max(dims.h * 0.12, Math.min(step, room));
