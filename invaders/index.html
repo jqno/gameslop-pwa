@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Space Invaders</title>
+<meta name="description" content="Shoot down the invaders before they land.">
+<meta name="theme-color" content="#0f1420">
+<link rel="manifest" href="../manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gameslop">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root {
+  color-scheme: light dark;
+  --width: min(100%, 520px);
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --ink: #1b2130;
+  --muted: #6b7382;
+  --btn: #ffffff;
+  --btnline: #ccd2dd;
+  --sel: #cfe0ff;
+  --accent: #2358c8;
+  --board: #e3e7ee;
+  --g0: #e0454f;
+  --g1: #f08c1c;
+  --g2: #e2bb12;
+  --g3: #2fae5a;
+  --g4: #2f7de0;
+  --g5: #8a4fd6;
+  --g6: #e04ba6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1420;
+    --panel: #161c2b;
+    --ink: #e7ebf3;
+    --muted: #8b95a8;
+    --btn: #1c2334;
+    --btnline: #313a50;
+    --sel: #2b456f;
+    --accent: #79a8ff;
+    --board: #161c2b;
+    --g0: #ff6b6b;
+    --g1: #ffa94d;
+    --g2: #ffd84a;
+    --g3: #4fd17a;
+    --g4: #5c9cff;
+    --g5: #b98cff;
+    --g6: #ff7ac8;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+header {
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+h1 { flex: 1; font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercase; }
+.meta { font-size: 14px; line-height: 1.25; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; white-space: pre; }
+a.key, button.key {
+  font: inherit;
+  background: var(--btn);
+  color: var(--ink);
+  border: 1px solid var(--btnline);
+  border-radius: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+a.key { display: flex; align-items: center; justify-content: center; padding: 0 14px; font-size: 22px; text-decoration: none; }
+button.key { padding: 10px 26px; font-size: 16px; font-weight: 600; }
+button.key.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.key:active { background: var(--sel); }
+/* The stage takes whatever height is left; the script sizes the field to the
+ * largest it can be inside it. Dragging anywhere on it moves the cannon. */
+.stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+.board {
+  display: block;
+  border-radius: 14px;
+  background: var(--board);
+}
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+  background: rgba(8, 12, 22, .45);
+}
+.overlay[hidden] { display: none; }
+.overlay > div {
+  width: min(100%, 340px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 26px 20px;
+  text-align: center;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 18px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .35);
+  animation: pop .3s ease-out;
+}
+.overlay strong { font-size: 28px; line-height: 1.1; color: var(--accent); }
+.overlay p { margin: 0; color: var(--muted); }
+.overlay p#ov-best { color: var(--ink); font-weight: 600; }
+@keyframes pop {
+  from { opacity: 0; transform: scale(.85); }
+  to { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <a class="key" href="../" aria-label="Main menu">←</a>
+  <h1>Invaders</h1>
+  <span class="meta" id="meta"></span>
+</header>
+<div class="stage" id="stage">
+  <canvas class="board" id="board"></canvas>
+</div>
+<div class="overlay" id="overlay">
+  <div>
+    <strong id="ov-title"></strong>
+    <p id="ov-text"></p>
+    <p id="ov-best"></p>
+    <button class="key primary" id="ov-go" type="button">Play</button>
+  </div>
+</div>
+<script id="app">
+'use strict';
+
+/* ------------------------------------------------------------------ *
+ * Rules
+ * ------------------------------------------------------------------ */
+
+/* The field is WIDTH by HEIGHT, with y going down. The invaders march in a
+ * formation of ROWS by COLS: world.aliens holds the ones left, each { r, c },
+ * and the one at r, c has its top left at fx + c * SPACE_X, fy + r * SPACE_Y.
+ * The formation moves sideways in direction dir, and steps down DROP and
+ * turns when it reaches the side. The cannon's top is at PLAYER_Y and
+ * world.player is the x of its middle. world.shot is the cannon's one shot
+ * and world.bombs the invaders' bombs, each { x, y } at its tip. The shields
+ * are made of square blocks, each { x, y } at its top left. */
+var WIDTH = 10;
+var HEIGHT = 14;
+var ROWS = 5;
+var COLS = 8;
+/* The sprites are drawn in pixels PX wide. */
+var PX = 0.06;
+var ALIEN_W = 12 * PX;
+var ALIEN_H = 8 * PX;
+var SPACE_X = 0.95;
+var SPACE_Y = 0.75;
+var MARGIN = 0.2;
+var DROP = 0.35;
+/* The formation starts at TOP on level 1, LOWER further down each level
+ * after, down to LOWEST. */
+var TOP = 1.2;
+var LOWER = 0.4;
+var LOWEST = 3.2;
+var PLAYER_Y = 13;
+var PLAYER_W = 13 * PX;
+var PLAYER_H = 8 * PX;
+var SHIELDS = 4;
+var SHIELD_Y = 11;
+var BLOCK = 0.18;
+var SHIELD = ['.######.', '########', '########', '###..###', '##....##'];
+/* A shot or bomb that hits a shield takes out the blocks within BLAST. */
+var BLAST = 0.2;
+var SHOT_SPEED = 16;
+var SHOT_LEN = 0.3;
+var BOMB_SPEED = 5;
+var BOMB_LEN = 0.25;
+var MAX_BOMBS = 3;
+/* Things move at most STEP at a time. */
+var STEP = 0.1;
+/* The formation moves MARCH widths a second on level 1, MARCH_UP faster
+ * each level after, and up to RUSH faster as it is shot down. */
+var MARCH = 0.5;
+var MARCH_UP = 0.1;
+var RUSH = 4;
+/* The invaders drop BOMBS bombs a second on level 1, BOMBS_UP more each
+ * level after. */
+var BOMBS = 0.8;
+var BOMBS_UP = 0.2;
+var LIVES = 3;
+/* What an invader in each row is worth. */
+var POINTS = [30, 20, 20, 10, 10];
+var STORAGE_KEY = 'invaders.v1';
+
+function rng(seed) {
+  var a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    var t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function marchSpeed(level, alive) {
+  return MARCH + MARCH_UP * (level - 1) + RUSH * (1 - alive / (ROWS * COLS));
+}
+
+function bombRate(level) {
+  return BOMBS + BOMBS_UP * (level - 1);
+}
+
+function startY(level) {
+  return Math.min(LOWEST, TOP + LOWER * (level - 1));
+}
+
+function clampPlayer(x) {
+  return Math.max(PLAYER_W / 2, Math.min(WIDTH - PLAYER_W / 2, x));
+}
+
+/* The top left of an invader, with the formation at fx, fy. */
+function alienAt(a, fx, fy) {
+  return { x: fx + a.c * SPACE_X, y: fy + a.r * SPACE_Y };
+}
+
+function newShields() {
+  var blocks = [];
+  var width = SHIELD[0].length * BLOCK;
+  for (var i = 0; i < SHIELDS; i++) {
+    var left = WIDTH * (i + 0.5) / SHIELDS - width / 2;
+    SHIELD.forEach(function (row, r) {
+      row.split('').forEach(function (ch, c) {
+        if (ch === '#') blocks.push({ x: left + c * BLOCK, y: SHIELD_Y + r * BLOCK });
+      });
+    });
+  }
+  return blocks;
+}
+
+function newWorld(level) {
+  var aliens = [];
+  for (var r = 0; r < ROWS; r++) {
+    for (var c = 0; c < COLS; c++) aliens.push({ r: r, c: c });
+  }
+  return {
+    aliens: aliens,
+    fx: (WIDTH - (COLS - 1) * SPACE_X - ALIEN_W) / 2,
+    fy: startY(level),
+    dir: 1,
+    player: WIDTH / 2,
+    shot: null,
+    bombs: [],
+    shields: newShields()
+  };
+}
+
+/* The world with a shot leaving the cannon, unless one is already flying. */
+function fire(world) {
+  if (world.shot !== null) return world;
+  return Object.assign({}, world, { shot: { x: world.player, y: PLAYER_Y } });
+}
+
+function inBox(x, y, left, top, w, h) {
+  return x >= left && x < left + w && y >= top && y < top + h;
+}
+
+/* The index of the invader at x, y, or -1. */
+function alienHit(aliens, fx, fy, x, y) {
+  return aliens.findIndex(function (a) {
+    var at = alienAt(a, fx, fy);
+    return inBox(x, y, at.x, at.y, ALIEN_W, ALIEN_H);
+  });
+}
+
+function shieldHit(shields, x, y) {
+  return shields.some(function (b) { return inBox(x, y, b.x, b.y, BLOCK, BLOCK); });
+}
+
+/* The shields with the blocks around x, y blown away. */
+function blast(shields, x, y) {
+  return shields.filter(function (b) {
+    return Math.hypot(b.x + BLOCK / 2 - x, b.y + BLOCK / 2 - y) > BLAST;
+  });
+}
+
+/* The world dt seconds on: the formation marches, the shot flies up and the
+ * bombs fall, a step at a time. An invader may drop a new bomb. Also the
+ * invaders shot down, with where they were; whether a bomb hit the cannon;
+ * and whether the invaders have landed. */
+function advance(world, dt, level, rand) {
+  var aliens = world.aliens;
+  var fx = world.fx;
+  var fy = world.fy;
+  var dir = world.dir;
+  var shot = world.shot;
+  var bombs = world.bombs;
+  var shields = world.shields;
+  var killed = [];
+  var hit = false;
+  var steps = Math.max(1, Math.ceil(SHOT_SPEED * dt / STEP));
+  var h = dt / steps;
+
+  for (var k = 0; k < steps && !hit; k++) {
+    var x = fx + dir * marchSpeed(level, aliens.length) * h;
+    var xs = aliens.map(function (a) { return a.c * SPACE_X; });
+    if (x + Math.min.apply(null, xs) < MARGIN || x + Math.max.apply(null, xs) + ALIEN_W > WIDTH - MARGIN) {
+      dir = -dir;
+      fy += DROP;
+    } else {
+      fx = x;
+    }
+    var nowX = fx;
+    var nowY = fy;
+    shields = shields.filter(function (b) {
+      return alienHit(aliens, nowX, nowY, b.x + BLOCK / 2, b.y + BLOCK / 2) < 0;
+    });
+
+    if (shot !== null) {
+      shot = { x: shot.x, y: shot.y - SHOT_SPEED * h };
+      var i = alienHit(aliens, fx, fy, shot.x, shot.y);
+      if (i >= 0) {
+        var at = alienAt(aliens[i], fx, fy);
+        killed.push({ r: aliens[i].r, c: aliens[i].c, x: at.x, y: at.y });
+        aliens = aliens.slice(0, i).concat(aliens.slice(i + 1));
+        shot = null;
+      } else if (shieldHit(shields, shot.x, shot.y)) {
+        shields = blast(shields, shot.x, shot.y);
+        shot = null;
+      } else if (shot.y < 0) {
+        shot = null;
+      }
+    }
+
+    var falling = [];
+    bombs.forEach(function (b) {
+      var y = b.y + BOMB_SPEED * h;
+      if (inBox(b.x, y, world.player - PLAYER_W / 2, PLAYER_Y, PLAYER_W, PLAYER_H)) {
+        hit = true;
+      } else if (shieldHit(shields, b.x, y)) {
+        shields = blast(shields, b.x, y);
+      } else if (y < HEIGHT) {
+        falling.push({ x: b.x, y: y });
+      }
+    });
+    bombs = falling;
+    if (aliens.length === 0) break;
+  }
+
+  if (aliens.length > 0 && bombs.length < MAX_BOMBS && rand() < bombRate(level) * dt) {
+    /* The lowest invader in a random column drops it. */
+    var cols = aliens.map(function (a) { return a.c; }).filter(function (c, j, all) { return all.indexOf(c) === j; });
+    var col = cols[Math.floor(rand() * cols.length)];
+    var low = aliens.filter(function (a) { return a.c === col; }).reduce(function (a, b) {
+      if (b.r > a.r) return b;
+      return a;
+    });
+    var from = alienAt(low, fx, fy);
+    bombs = bombs.concat([{ x: from.x + ALIEN_W / 2, y: from.y + ALIEN_H + BOMB_LEN }]);
+  }
+
+  var bottom = Math.max.apply(null, aliens.map(function (a) { return alienAt(a, fx, fy).y + ALIEN_H; }));
+  return {
+    world: { aliens: aliens, fx: fx, fy: fy, dir: dir, player: world.player, shot: shot, bombs: bombs, shields: shields },
+    killed: killed,
+    hit: hit,
+    landed: bottom >= PLAYER_Y
+  };
+}
+
+function isCleared(world) {
+  return world.aliens.length === 0;
+}
+
+/* progress holds the best score. */
+function serialize(progress) {
+  return JSON.stringify({ version: 1, best: progress.best });
+}
+
+function deserialize(text) {
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+  if (!data || data.version !== 1) return null;
+  if (!Number.isInteger(data.best) || data.best < 0) return null;
+  return { best: data.best };
+}
+
+/* ------------------------------------------------------------------ *
+ * UI
+ * ------------------------------------------------------------------ */
+
+/* Sprites, a string per row of pixels; the invaders have two frames each, by
+ * row of the formation. */
+var SQUID = [
+  ['...##...', '..####..', '.######.', '##.##.##', '########', '..#..#..', '.#.##.#.', '#.#..#.#'],
+  ['...##...', '..####..', '.######.', '##.##.##', '########', '.#.##.#.', '#......#', '.#....#.']
+];
+var CRAB = [
+  ['..#.....#..', '...#...#...', '..#######..', '.##.###.##.', '###########', '#.#######.#', '#.#.....#.#', '...##.##...'],
+  ['..#.....#..', '#..#...#..#', '#.#######.#', '###.###.###', '###########', '.#########.', '..#.....#..', '.#.......#.']
+];
+var OCTOPUS = [
+  ['....####....', '.##########.', '############', '###..##..###', '############', '...##..##...', '..##.##.##..', '##........##'],
+  ['....####....', '.##########.', '############', '###..##..###', '############', '..###..###..', '.##..##..##.', '..##....##..']
+];
+var SPRITES = [SQUID, CRAB, CRAB, OCTOPUS, OCTOPUS];
+var CANNON = ['......#......', '.....###.....', '.....###.....', '.###########.', '#############', '#############', '#############', '#############'];
+var BOOM = ['.#...#...#..', '..#..#..#...', '...#...#....', '##.......##.', '...#...#....', '..#..#..#...', '.#...#...#..'];
+
+function init() {
+  var stageEl = document.getElementById('stage');
+  var canvas = document.getElementById('board');
+  var ctx = canvas.getContext('2d');
+  var overlayEl = document.getElementById('overlay');
+  var titleEl = document.getElementById('ov-title');
+  var textEl = document.getElementById('ov-text');
+  var goBtn = document.getElementById('ov-go');
+  var bestEl = document.getElementById('ov-best');
+  var metaEl = document.getElementById('meta');
+
+  /* The cannon moves STEER widths a second on the keyboard. */
+  var STEER = 8;
+  var BOOM_MS = 250;
+  /* After losing a life, and before each level, everything waits this long. */
+  var DEAD_MS = 1200;
+  var WAVE_MS = 1200;
+
+  var rand = rng(Math.floor(Math.random() * 4294967296));
+  var progress = load() || { best: 0 };
+  var world = null;
+  var level = 1;
+  var score = 0;
+  var lives = LIVES;
+  /* Whether a game is under way; not while the popup is up. */
+  var running = false;
+  /* Nothing moves until then; the cannon is blown up if dead is set. */
+  var pauseUntil = 0;
+  var dead = false;
+  var drag = null;
+  var keys = { left: false, right: false };
+  var last = 0;
+  /* Invaders blowing up, drawn until they are done. */
+  var effects = [];
+  var scale = 1;
+  var colours = {};
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, serialize(progress));
+    } catch (e) {
+      /* private mode / quota: the game still works, it just forgets. */
+    }
+  }
+
+  function load() {
+    try {
+      return deserialize(localStorage.getItem(STORAGE_KEY));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function readColours() {
+    var style = getComputedStyle(document.documentElement);
+    var get = function (name) { return style.getPropertyValue(name).trim(); };
+    colours = {
+      rows: [get('--g5'), get('--g4'), get('--g4'), get('--g6'), get('--g6')],
+      shield: get('--g3'),
+      bomb: get('--g0'),
+      player: get('--accent'),
+      shot: get('--ink'),
+      text: get('--muted')
+    };
+  }
+
+  function resize() {
+    var rect = stageEl.getBoundingClientRect();
+    scale = Math.min(rect.width / WIDTH, rect.height / HEIGHT);
+    var dpr = window.devicePixelRatio || 1;
+    canvas.style.width = WIDTH * scale + 'px';
+    canvas.style.height = HEIGHT * scale + 'px';
+    canvas.width = Math.round(WIDTH * scale * dpr);
+    canvas.height = Math.round(HEIGHT * scale * dpr);
+    draw(performance.now());
+  }
+
+  /* A sprite with its top middle at x, y. */
+  function sprite(rows, x, y, colour, alpha) {
+    var left = x - rows[0].length * PX / 2;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = colour;
+    rows.forEach(function (row, j) {
+      for (var i = 0; i < row.length; i++) {
+        if (row[i] === '#') ctx.fillRect(left + i * PX, y + j * PX, PX + 0.004, PX + 0.004);
+      }
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  function text(line, size, weight, y) {
+    ctx.fillStyle = colours.text;
+    ctx.textAlign = 'center';
+    ctx.font = weight + ' ' + size + 'px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+    ctx.fillText(line, WIDTH / 2, y);
+  }
+
+  function draw(now) {
+    var dpr = canvas.width / (WIDTH * scale);
+    ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+    ctx.clearRect(0, 0, WIDTH, HEIGHT);
+    if (world === null) return;
+    /* The invaders' legs move as they march. fx goes below 0 once the left
+     * columns are shot down. */
+    var step = (Math.floor(world.fx / 0.25) % 2 + 2) % 2;
+    world.aliens.forEach(function (a) {
+      var at = alienAt(a, world.fx, world.fy);
+      sprite(SPRITES[a.r][step], at.x + ALIEN_W / 2, at.y, colours.rows[a.r], 1);
+    });
+    effects.forEach(function (e) {
+      sprite(BOOM, e.x + ALIEN_W / 2, e.y, colours.rows[e.r], 1 - (now - e.start) / BOOM_MS);
+    });
+    ctx.fillStyle = colours.shield;
+    world.shields.forEach(function (b) { ctx.fillRect(b.x, b.y, BLOCK + 0.004, BLOCK + 0.004); });
+    ctx.fillStyle = colours.bomb;
+    world.bombs.forEach(function (b) { ctx.fillRect(b.x - 0.04, b.y - BOMB_LEN, 0.08, BOMB_LEN); });
+    if (world.shot !== null) {
+      ctx.fillStyle = colours.shot;
+      ctx.fillRect(world.shot.x - 0.03, world.shot.y, 0.06, SHOT_LEN);
+    }
+    var paused = running && now < pauseUntil;
+    if (dead && paused) {
+      /* Blinking wreckage where the cannon was. */
+      if (Math.floor(now / 150) % 2 === 0) sprite(BOOM, world.player, PLAYER_Y, colours.player, 1);
+    } else {
+      sprite(CANNON, world.player, PLAYER_Y, colours.player, 1);
+    }
+    if (paused && !dead) {
+      text('Level ' + level, 0.6, 600, HEIGHT * 0.55);
+    }
+  }
+
+  function showMeta() {
+    metaEl.textContent = 'Score ' + score + '\nLevel ' + level + ' · Lives ' + lives;
+  }
+
+  function movePlayer(x) {
+    world = Object.assign({}, world, { player: clampPlayer(x) });
+  }
+
+  function update(dt, now) {
+    effects = effects.filter(function (e) { return now - e.start < BOOM_MS; });
+    if (now < pauseUntil) return;
+    dead = false;
+    var steer = 0;
+    if (keys.left) steer -= STEER * dt;
+    if (keys.right) steer += STEER * dt;
+    if (steer !== 0) movePlayer(world.player + steer);
+    var result = advance(fire(world), dt, level, rand);
+    world = result.world;
+    result.killed.forEach(function (a) {
+      score += POINTS[a.r];
+      effects.push({ r: a.r, x: a.x, y: a.y, start: now });
+    });
+    if (result.landed) {
+      lives = 0;
+      dead = true;
+      finish();
+    } else if (result.hit) {
+      lives--;
+      dead = true;
+      world = Object.assign({}, world, { shot: null, bombs: [] });
+      pauseUntil = now + DEAD_MS;
+      if (lives === 0) finish();
+    } else if (isCleared(world)) {
+      level++;
+      world = newWorld(level);
+      pauseUntil = now + WAVE_MS;
+    }
+    showMeta();
+  }
+
+  function frame(now) {
+    if (!running) return;
+    var dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    update(dt, now);
+    draw(now);
+    if (running) requestAnimationFrame(frame);
+  }
+
+  function finish() {
+    running = false;
+    var text = 'You scored ' + score + ' points and reached level ' + level + '.';
+    if (score > progress.best) {
+      if (progress.best > 0) text += ' New best!';
+      progress.best = score;
+      save();
+    }
+    overlay('Game over', text, 'Play again');
+  }
+
+  function newGame() {
+    level = 1;
+    score = 0;
+    lives = LIVES;
+    dead = false;
+    effects = [];
+    world = newWorld(level);
+    showMeta();
+    draw(performance.now());
+  }
+
+  function overlay(title, text, button) {
+    titleEl.textContent = title;
+    textEl.textContent = text;
+    goBtn.textContent = button;
+    if (progress.best > 0) {
+      bestEl.textContent = 'Best: ' + progress.best + ' points';
+    } else {
+      bestEl.textContent = 'No best yet';
+    }
+    overlayEl.hidden = false;
+    goBtn.focus();
+  }
+
+  function start() {
+    if (running) return;
+    overlayEl.hidden = true;
+    newGame();
+    running = true;
+    last = performance.now();
+    pauseUntil = last + WAVE_MS;
+    requestAnimationFrame(frame);
+  }
+
+  goBtn.addEventListener('click', start);
+
+  /* Drag anywhere to move the cannon. */
+  stageEl.addEventListener('pointerdown', function (ev) {
+    if (!running) return;
+    drag = { x: ev.clientX, player: world.player };
+    stageEl.setPointerCapture(ev.pointerId);
+  });
+  stageEl.addEventListener('pointermove', function (ev) {
+    if (!drag) return;
+    movePlayer(drag.player + (ev.clientX - drag.x) / scale);
+  });
+  stageEl.addEventListener('pointerup', function () {
+    drag = null;
+  });
+  stageEl.addEventListener('pointercancel', function () {
+    drag = null;
+  });
+
+  var LEFT = ['ArrowLeft', 'a', 'A'];
+  var RIGHT = ['ArrowRight', 'd', 'D'];
+  document.addEventListener('keydown', function (ev) {
+    if (LEFT.indexOf(ev.key) >= 0) keys.left = true;
+    if (RIGHT.indexOf(ev.key) >= 0) keys.right = true;
+  });
+  document.addEventListener('keyup', function (ev) {
+    if (LEFT.indexOf(ev.key) >= 0) keys.left = false;
+    if (RIGHT.indexOf(ev.key) >= 0) keys.right = false;
+  });
+
+  readColours();
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+    readColours();
+    draw(performance.now());
+  });
+  new ResizeObserver(resize).observe(stageEl);
+  newGame();
+  overlay('Space Invaders', 'Drag to move your cannon; it fires on its own. Shoot down every invader to go to the next level, before they land. The shields stop bombs, but wear away. You have ' + LIVES + ' lives.', 'Play');
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('../sw.js').catch(function () {
+        /* file:// or no HTTPS: the app runs fine, it just is not installable. */
+      });
+    });
+  }
+}
+
+if (typeof document !== 'undefined') init();
+</script>
+</body>
+</html>

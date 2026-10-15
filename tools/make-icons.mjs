@@ -6,7 +6,8 @@
  * with three connected pipes for Pipe Connect, and a grid of blue and orange
  * squares for Takuzu, and rows of bricks with a ball on its way back up from
  * the paddle for Breakout, a patch of 2 and 4 tiles for 2048, and a small
- * board of regions with a star in each for Star Battle.
+ * board of regions with a star in each for Star Battle, and an invader with
+ * the cannon's shot on its way up to it for Space Invaders.
  * Each icon is a scene over the unit square, supersampled for smooth
  * edges. Everything sits inside the maskable safe zone (radius 0.4). */
 import { deflateSync } from 'node:zlib';
@@ -498,7 +499,26 @@ function starBattle() {
   };
 }
 
-const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper], ['pipes/', pipes], ['takuzu/', takuzu], ['breakout/', breakout], ['2048/', twentyFortyEight], ['stars/', starBattle]];
+/* --- space invaders: an invader, and the cannon shooting at it -------- */
+
+function invaders() {
+  const px = 0.032;
+  const crab = ['..#.....#..', '...#...#...', '..#######..', '.##.###.##.', '###########', '#.#######.#', '#.#.....#.#', '...##.##...'];
+  const cannon = ['......#......', '.....###.....', '.###########.', '#############', '#############'];
+  const pixel = (rows, top, x, y) => {
+    const c = Math.floor((x - 0.5) / px + rows[0].length / 2);
+    const r = Math.floor((y - top) / px);
+    return r >= 0 && r < rows.length && c >= 0 && c < rows[0].length && rows[r][c] === '#';
+  };
+  return (x, y) => {
+    if (pixel(crab, 0.24, x, y)) return PURPLE;
+    if (pixel(cannon, 0.66, x, y)) return BLUE;
+    if (Math.abs(x - 0.5) <= 0.012 && y >= 0.5 && y <= 0.58) return PAPER;
+    return BG;
+  };
+}
+
+const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper], ['pipes/', pipes], ['takuzu/', takuzu], ['breakout/', breakout], ['2048/', twentyFortyEight], ['stars/', starBattle], ['invaders/', invaders]];
 for (const [dir, scene] of ICONS) {
   for (const size of [192, 512]) {
     const name = `${dir}icon-${size}.png`;

@@ -13,6 +13,7 @@ const FILES = [
   'breakout/', 'breakout/index.html', 'breakout/icon-192.png', 'breakout/icon-512.png',
   '2048/', '2048/index.html', '2048/icon-192.png', '2048/icon-512.png',
   'stars/', 'stars/index.html', 'stars/icon-192.png', 'stars/icon-512.png',
+  'invaders/', 'invaders/index.html', 'invaders/icon-192.png', 'invaders/icon-512.png',
 ];
 
 self.addEventListener('install', (event) => {

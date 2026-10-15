@@ -11,5 +11,6 @@ Gameslop is a progressive web app full of small games:
 - Breakout
 - 2048
 - Star Battle
+- Space Invaders
 
 I totally vibecoded this. I'm sorry...
