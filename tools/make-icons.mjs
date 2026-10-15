@@ -10,7 +10,7 @@
  * the cannon's shot on its way up to it for Space Invaders, and a bird
  * heading for the gap between two pipes for Flappy, and a solved heart with
  * its clues for Nonogram, and a cascade of three cards ending in a heart for
- * FreeCell.
+ * FreeCell, and five dice all showing the same face for Yahtzee.
  * Each icon is a scene over the unit square, supersampled for smooth
  * edges. Everything sits inside the maskable safe zone (radius 0.4). */
 import { deflateSync } from 'node:zlib';
@@ -617,7 +617,15 @@ function freecell() {
   };
 }
 
-const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper], ['pipes/', pipes], ['takuzu/', takuzu], ['breakout/', breakout], ['2048/', twentyFortyEight], ['stars/', starBattle], ['invaders/', invaders], ['flappy/', flappy], ['nonogram/', nonogram], ['freecell/', freecell]];
+/* --- yahtzee: five dice all showing five ------------------------------ */
+
+function yahtzee() {
+  const spots = [[0.31, 0.4], [0.5, 0.4], [0.69, 0.4], [0.405, 0.6], [0.595, 0.6]];
+  const dice = spots.map(([cx, cy]) => die(cx, cy, 0.08, 0, 5, PAPER));
+  return (x, y) => dice.reduce((hit, d) => hit || d(x, y), null) || BG;
+}
+
+const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper], ['pipes/', pipes], ['takuzu/', takuzu], ['breakout/', breakout], ['2048/', twentyFortyEight], ['stars/', starBattle], ['invaders/', invaders], ['flappy/', flappy], ['nonogram/', nonogram], ['freecell/', freecell], ['yahtzee/', yahtzee]];
 for (const [dir, scene] of ICONS) {
   for (const size of [192, 512]) {
     const name = `${dir}icon-${size}.png`;
