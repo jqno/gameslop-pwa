@@ -1,0 +1,2744 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nonogram</title>
+<meta name="description" content="Fill in the grid from the numbers to reveal a picture: a nonogram (Picross) made from emoji, in your browser.">
+<meta name="theme-color" content="#0f1420">
+<link rel="manifest" href="../manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gameslop">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root {
+  color-scheme: light dark;
+  --width: min(100%, 560px);
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --ink: #1b2130;
+  --muted: #6b7382;
+  --line: #d3d8e2;
+  --edge: #2a3143;
+  --sel: #cfe0ff;
+  --cur: #e6eefc;
+  --bad: #d64545;
+  --badbg: #fbe3e3;
+  --hint: #f08c1a;
+  --btn: #ffffff;
+  --btnline: #ccd2dd;
+  --accent: #2358c8;
+  /* Filled cells, set apart from the heavy lines that run over them. */
+  --filled: #2f6fe0;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1420;
+    --panel: #161c2b;
+    --ink: #e7ebf3;
+    --muted: #8b95a8;
+    --line: #2b3346;
+    --edge: #8a94a8;
+    --sel: #2b456f;
+    --cur: #1f2a40;
+    --bad: #ff7b7b;
+    --badbg: #45222a;
+    --hint: #ffa64d;
+    --btn: #1c2334;
+    --btnline: #313a50;
+    --accent: #79a8ff;
+    --filled: #4d8dff;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+header {
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+h1 { font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercase; }
+.meta { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+button.key, a.key {
+  font: inherit;
+  background: var(--btn);
+  color: var(--ink);
+  border: 1px solid var(--btnline);
+  border-radius: 10px;
+  padding: 12px 0;
+  min-height: 48px;
+  cursor: pointer;
+}
+button.key:active { background: var(--sel); }
+button.key:disabled { opacity: .4; cursor: default; }
+button.key.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* A link, since it leaves the page; laid out like the buttons around it. */
+a.key { display: flex; align-items: center; justify-content: center; padding: 0 10px; font-size: 22px; text-decoration: none; }
+/* Back leaves for the main menu; New and Restart throw the game away; Check,
+ * Hint and Undo help you play. The rules between them say which is which. */
+.actions {
+  position: relative;
+  flex: none;
+  width: var(--width);
+  display: grid;
+  grid-template-columns: auto auto 1fr 1fr auto 1fr 1fr 1fr;
+  gap: 6px;
+}
+.actions button.key { font-size: 14px; padding-inline: 4px; }
+.sep { width: 1px; margin: 6px 3px; background: var(--btnline); border-radius: 1px; }
+/* The New menu hangs below its button. */
+.menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 10px);
+  z-index: 5;
+  width: min(100%, 300px);
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--btnline);
+  border-radius: 14px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .28);
+}
+/* Without this, display: grid above would beat the hidden attribute. */
+.menu[hidden] { display: none; }
+.menu h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.chip {
+  font: inherit;
+  font-size: 14px;
+  min-height: 38px;
+  border: 1px solid var(--btnline);
+  border-radius: 8px;
+  background: var(--btn);
+  color: var(--ink);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.menu .go { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+/* The stage takes whatever height is left, and the board is the largest
+ * that fits in it, clues and all, with square cells. */
+.stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+}
+.board {
+  --cell: min(100cqw / (var(--n) + var(--rc)), 100cqh / (var(--n) + var(--cc)));
+  display: grid;
+  grid-template-columns: calc(var(--rc) * var(--cell)) repeat(var(--n), var(--cell));
+  grid-template-rows: calc(var(--cc) * var(--cell)) repeat(var(--n), var(--cell));
+  font-size: calc(var(--cell) * .6);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  touch-action: none;
+}
+.clue { display: flex; justify-content: flex-end; align-items: center; color: var(--ink); border-radius: 3px; }
+.clue span { width: var(--cell); text-align: center; }
+.clue.col { flex-direction: column; justify-content: flex-end; }
+.clue.col span { height: var(--cell); display: flex; align-items: center; justify-content: center; }
+.clue.cur { background: var(--cur); }
+.clue.done { color: var(--muted); opacity: .45; }
+.clue.bad { color: var(--bad); background: var(--badbg); opacity: 1; }
+/* Lines between the cells, heavier every five and around the edge. */
+.cell {
+  position: relative;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.cell.l { border-left: 2px solid var(--edge); }
+.cell.t { border-top: 2px solid var(--edge); }
+.cell.r { border-right: 2px solid var(--edge); }
+.cell.b { border-bottom: 2px solid var(--edge); }
+.cell.fill { background: var(--filled); }
+.cell.cross::before, .cell.cross::after {
+  content: '';
+  position: absolute;
+  left: 22%;
+  right: 22%;
+  top: 50%;
+  height: 1.5px;
+  background: var(--muted);
+  transform: rotate(45deg);
+}
+.cell.cross::after { transform: rotate(-45deg); }
+.board.solved .cell.cross::before, .board.solved .cell.cross::after { display: none; }
+.cell.bad { box-shadow: inset 0 0 0 2px var(--bad); }
+.cell.hint { animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse {
+  0%, 100% { box-shadow: inset 0 0 0 2px var(--hint); }
+  50% { box-shadow: inset 0 0 0 4px var(--hint); }
+}
+.bottom {
+  flex: none;
+  width: var(--width);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+.status { margin: 0; min-height: 38px; font-size: 14px; color: var(--muted); }
+.status.win { color: var(--accent); font-weight: 600; }
+.status .why { display: block; font-size: 13px; }
+/* Whether a tap fills a cell or crosses it off. */
+.mode { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--btnline); border-radius: 10px; overflow: hidden; }
+.mode button {
+  font: inherit;
+  font-size: 20px;
+  min-width: 56px;
+  min-height: 48px;
+  border: 0;
+  background: var(--btn);
+  color: var(--ink);
+  cursor: pointer;
+}
+.mode button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+  background: rgba(8, 12, 22, .45);
+}
+.overlay[hidden] { display: none; }
+.overlay > div {
+  width: min(100%, 340px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 26px 20px;
+  text-align: center;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 18px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .35);
+  animation: pop .3s ease-out;
+}
+.overlay strong { font-size: 28px; line-height: 1.1; color: var(--accent); }
+.overlay .emoji { font-size: 96px; line-height: 1; }
+.overlay .emoji:empty { display: none; }
+.overlay p { margin: 0; color: var(--muted); white-space: pre-line; }
+.overlay button.key { padding: 10px 20px; font-size: 16px; font-weight: 600; }
+@keyframes pop {
+  from { opacity: 0; transform: scale(.85); }
+  to { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Nonogram</h1>
+  <span class="meta" id="meta"></span>
+</header>
+<div class="actions">
+  <a class="key" href="../" aria-label="Main menu">←</a>
+  <span class="sep" aria-hidden="true"></span>
+  <button class="key" id="new" type="button" aria-haspopup="true" aria-expanded="false">New</button>
+  <button class="key" id="restart" type="button">Restart</button>
+  <span class="sep" aria-hidden="true"></span>
+  <button class="key" id="check" type="button">Check</button>
+  <button class="key" id="hintbtn" type="button">Hint</button>
+  <button class="key" id="undo" type="button">Undo</button>
+  <div class="menu" id="menu" hidden>
+    <h2>Size</h2>
+    <div class="chips" id="menu-size"></div>
+    <div class="go">
+      <button class="key" id="menu-cancel" type="button">Cancel</button>
+      <button class="key primary" id="menu-start" type="button">Start</button>
+    </div>
+  </div>
+</div>
+<div class="stage">
+  <div class="board" id="board"></div>
+</div>
+<div class="bottom">
+  <p class="status" id="status"></p>
+  <div class="mode" role="group" aria-label="What a tap does">
+    <button id="mode-fill" type="button" aria-pressed="true" aria-label="Fill">■</button>
+    <button id="mode-cross" type="button" aria-pressed="false" aria-label="Cross off">✕</button>
+  </div>
+</div>
+<div class="overlay" id="overlay">
+  <div>
+    <span class="emoji" id="ov-emoji"></span>
+    <strong id="ov-title"></strong>
+    <p id="ov-text"></p>
+    <button class="key" id="dismiss" type="button">Back to the board</button>
+  </div>
+</div>
+<script id="app">
+'use strict';
+
+/* ------------------------------------------------------------------ *
+ * Rules
+ * ------------------------------------------------------------------ */
+
+/* The grid is size x size cells, row by row. The player marks a cell
+ * UNKNOWN, FILL or CROSS; a solution, and what the solver knows, holds 1
+ * for filled, 0 for empty and EMPTY for not known yet. */
+var SIZES = [10, 15, 20];
+var UNKNOWN = 0;
+var FILL = 1;
+var CROSS = 2;
+var EMPTY = -1;
+var STORAGE_KEY = 'nonogram.v1';
+var DECKS_STORAGE_KEY = 'nonogram.decks.v1';
+var UNDO_LIMIT = 200;
+/* After the cutoff where the levels split most clearly, the shares of
+ * filled cells a picture is tried at, in turn, until one solves by logic
+ * alone. */
+var SHARES = [0.5, 0.45, 0.55, 0.4, 0.6, 0.35];
+/* A picture with more runs than this per line, on average and as a share
+ * of the size, is noise rather than a picture. */
+var MAX_RUNS = 0.16;
+/* At most this share of a picture's cells is flipped to make it solvable,
+ * trying this many cells for each flip. */
+var MAX_FLIPS = 0.04;
+var FLIP_TRIES = 8;
+/* How large an emoji is drawn before it is cut down to the grid. */
+var RENDER_SIZE = 160;
+
+/* One emoji per line, then its name. Written by tools/nonogram-emoji.mjs. */
+var EMOJI_LIST = `
+©️ copyright
+®️ registered
+‼️ double exclamation mark
+⁉️ exclamation question mark
+™️ trade mark
+ℹ️ information
+↔️ left-right arrow
+↕️ up-down arrow
+↖️ up-left arrow
+↗️ up-right arrow
+↘️ down-right arrow
+↙️ down-left arrow
+↩️ right arrow curving left
+↪️ left arrow curving right
+⌚ watch
+⌛ hourglass done
+⌨️ keyboard
+⏏️ eject button
+⏩ fast-forward button
+⏪ fast reverse button
+⏫ fast up button
+⏬ fast down button
+⏭️ next track button
+⏮️ last track button
+⏯️ play or pause button
+⏰ alarm clock
+⏱️ stopwatch
+⏲️ timer clock
+⏳ hourglass not done
+⏸️ pause button
+⏹️ stop button
+⏺️ record button
+Ⓜ️ circled M
+▪️ black small square
+▫️ white small square
+▶️ play button
+◀️ reverse button
+◻️ white medium square
+◼️ black medium square
+◽ white medium-small square
+◾ black medium-small square
+☀️ sun
+☁️ cloud
+☂️ umbrella
+☃️ snowman
+☄️ comet
+☎️ telephone
+☑️ check box with check
+☔ umbrella with rain drops
+☕ hot beverage
+☘️ shamrock
+☝️ index pointing up
+☠️ skull and crossbones
+☢️ radioactive
+☣️ biohazard
+☦️ orthodox cross
+☪️ star and crescent
+☮️ peace symbol
+☯️ yin yang
+☸️ wheel of dharma
+☹️ frowning face
+☺️ smiling face
+♀️ female sign
+♂️ male sign
+♈ Aries
+♉ Taurus
+♊ Gemini
+♋ Cancer
+♌ Leo
+♍ Virgo
+♎ Libra
+♏ Scorpio
+♐ Sagittarius
+♑ Capricorn
+♒ Aquarius
+♓ Pisces
+♟️ chess pawn
+♠️ spade suit
+♣️ club suit
+♥️ heart suit
+♦️ diamond suit
+♨️ hot springs
+♻️ recycling symbol
+♾️ infinity
+♿ wheelchair symbol
+⚒️ hammer and pick
+⚓ anchor
+⚔️ crossed swords
+⚕️ medical symbol
+⚖️ balance scale
+⚗️ alembic
+⚙️ gear
+⚛️ atom symbol
+⚜️ fleur-de-lis
+⚠️ warning
+⚡ high voltage
+⚧️ transgender symbol
+⚪ white circle
+⚫ black circle
+⚰️ coffin
+⚱️ funeral urn
+⚽ soccer ball
+⚾ baseball
+⛄ snowman without snow
+⛅ sun behind cloud
+⛈️ cloud with lightning and rain
+⛎ Ophiuchus
+⛏️ pick
+⛑️ rescue worker’s helmet
+⛓️ chains
+⛔ no entry
+⛩️ shinto shrine
+⛪ church
+⛰️ mountain
+⛱️ umbrella on ground
+⛲ fountain
+⛳ flag in hole
+⛴️ ferry
+⛵ sailboat
+⛷️ skier
+⛸️ ice skate
+⛹️ person bouncing ball
+⛺ tent
+⛽ fuel pump
+✂️ scissors
+✅ check mark button
+✈️ airplane
+✉️ envelope
+✊ raised fist
+✋ raised hand
+✌️ victory hand
+✍️ writing hand
+✏️ pencil
+✒️ black nib
+✔️ check mark
+✖️ multiply
+✝️ latin cross
+✡️ star of David
+✨ sparkles
+✳️ eight-spoked asterisk
+✴️ eight-pointed star
+❄️ snowflake
+❇️ sparkle
+❌ cross mark
+❎ cross mark button
+❓ red question mark
+❔ white question mark
+❕ white exclamation mark
+❗ red exclamation mark
+❣️ heart exclamation
+❤️ red heart
+➕ plus
+➖ minus
+➗ divide
+➡️ right arrow
+➰ curly loop
+➿ double curly loop
+⤴️ right arrow curving up
+⤵️ right arrow curving down
+⬅️ left arrow
+⬆️ up arrow
+⬇️ down arrow
+⬛ black large square
+⬜ white large square
+⭐ star
+⭕ hollow red circle
+〰️ wavy dash
+〽️ part alternation mark
+㊗️ Japanese “congratulations” button
+㊙️ Japanese “secret” button
+🀄 mahjong red dragon
+🃏 joker
+🅰️ A button (blood type)
+🅱️ B button (blood type)
+🅾️ O button (blood type)
+🅿️ P button
+🆎 AB button (blood type)
+🆑 CL button
+🆒 COOL button
+🆓 FREE button
+🆔 ID button
+🆕 NEW button
+🆖 NG button
+🆗 OK button
+🆘 SOS button
+🆙 UP! button
+🆚 VS button
+🈁 Japanese “here” button
+🈂️ Japanese “service charge” button
+🈚 Japanese “free of charge” button
+🈯 Japanese “reserved” button
+🈲 Japanese “prohibited” button
+🈳 Japanese “vacancy” button
+🈴 Japanese “passing grade” button
+🈵 Japanese “no vacancy” button
+🈶 Japanese “not free of charge” button
+🈷️ Japanese “monthly amount” button
+🈸 Japanese “application” button
+🈹 Japanese “discount” button
+🈺 Japanese “open for business” button
+🉐 Japanese “bargain” button
+🉑 Japanese “acceptable” button
+🌀 cyclone
+🌁 foggy
+🌂 closed umbrella
+🌃 night with stars
+🌄 sunrise over mountains
+🌅 sunrise
+🌆 cityscape at dusk
+🌇 sunset
+🌈 rainbow
+🌉 bridge at night
+🌊 water wave
+🌋 volcano
+🌌 milky way
+🌍 globe showing Europe-Africa
+🌎 globe showing Americas
+🌏 globe showing Asia-Australia
+🌐 globe with meridians
+🌑 new moon
+🌒 waxing crescent moon
+🌓 first quarter moon
+🌔 waxing gibbous moon
+🌕 full moon
+🌖 waning gibbous moon
+🌗 last quarter moon
+🌘 waning crescent moon
+🌙 crescent moon
+🌚 new moon face
+🌛 first quarter moon face
+🌜 last quarter moon face
+🌝 full moon face
+🌞 sun with face
+🌟 glowing star
+🌠 shooting star
+🌡️ thermometer
+🌤️ sun behind small cloud
+🌥️ sun behind large cloud
+🌦️ sun behind rain cloud
+🌧️ cloud with rain
+🌨️ cloud with snow
+🌩️ cloud with lightning
+🌪️ tornado
+🌫️ fog
+🌬️ wind face
+🌭 hot dog
+🌮 taco
+🌯 burrito
+🌰 chestnut
+🌱 seedling
+🌲 evergreen tree
+🌳 deciduous tree
+🌴 palm tree
+🌵 cactus
+🌶️ hot pepper
+🌷 tulip
+🌸 cherry blossom
+🌹 rose
+🌺 hibiscus
+🌻 sunflower
+🌼 blossom
+🌽 ear of corn
+🌾 sheaf of rice
+🌿 herb
+🍀 four leaf clover
+🍁 maple leaf
+🍂 fallen leaf
+🍃 leaf fluttering in wind
+🍄 mushroom
+🍅 tomato
+🍆 eggplant
+🍇 grapes
+🍈 melon
+🍉 watermelon
+🍊 tangerine
+🍋 lemon
+🍌 banana
+🍍 pineapple
+🍎 red apple
+🍏 green apple
+🍐 pear
+🍑 peach
+🍒 cherries
+🍓 strawberry
+🍔 hamburger
+🍕 pizza
+🍖 meat on bone
+🍗 poultry leg
+🍘 rice cracker
+🍙 rice ball
+🍚 cooked rice
+🍛 curry rice
+🍜 steaming bowl
+🍝 spaghetti
+🍞 bread
+🍟 french fries
+🍠 roasted sweet potato
+🍡 dango
+🍢 oden
+🍣 sushi
+🍤 fried shrimp
+🍥 fish cake with swirl
+🍦 soft ice cream
+🍧 shaved ice
+🍨 ice cream
+🍩 doughnut
+🍪 cookie
+🍫 chocolate bar
+🍬 candy
+🍭 lollipop
+🍮 custard
+🍯 honey pot
+🍰 shortcake
+🍱 bento box
+🍲 pot of food
+🍳 cooking
+🍴 fork and knife
+🍵 teacup without handle
+🍶 sake
+🍷 wine glass
+🍸 cocktail glass
+🍹 tropical drink
+🍺 beer mug
+🍻 clinking beer mugs
+🍼 baby bottle
+🍽️ fork and knife with plate
+🍾 bottle with popping cork
+🍿 popcorn
+🎀 ribbon
+🎁 wrapped gift
+🎂 birthday cake
+🎃 jack-o-lantern
+🎄 Christmas tree
+🎅 Santa Claus
+🎆 fireworks
+🎇 sparkler
+🎈 balloon
+🎉 party popper
+🎊 confetti ball
+🎋 tanabata tree
+🎌 crossed flags
+🎍 pine decoration
+🎎 Japanese dolls
+🎏 carp streamer
+🎐 wind chime
+🎑 moon viewing ceremony
+🎒 backpack
+🎓 graduation cap
+🎖️ military medal
+🎗️ reminder ribbon
+🎙️ studio microphone
+🎚️ level slider
+🎛️ control knobs
+🎞️ film frames
+🎟️ admission tickets
+🎠 carousel horse
+🎡 ferris wheel
+🎢 roller coaster
+🎣 fishing pole
+🎤 microphone
+🎥 movie camera
+🎦 cinema
+🎧 headphone
+🎨 artist palette
+🎩 top hat
+🎪 circus tent
+🎫 ticket
+🎬 clapper board
+🎭 performing arts
+🎮 video game
+🎯 bullseye
+🎰 slot machine
+🎱 pool 8 ball
+🎲 game die
+🎳 bowling
+🎴 flower playing cards
+🎵 musical note
+🎶 musical notes
+🎷 saxophone
+🎸 guitar
+🎹 musical keyboard
+🎺 trumpet
+🎻 violin
+🎼 musical score
+🎽 running shirt
+🎾 tennis
+🎿 skis
+🏀 basketball
+🏁 chequered flag
+🏂 snowboarder
+🏃 person running
+🏄 person surfing
+🏅 sports medal
+🏆 trophy
+🏇 horse racing
+🏈 american football
+🏉 rugby football
+🏊 person swimming
+🏋️ person lifting weights
+🏌️ person golfing
+🏍️ motorcycle
+🏎️ racing car
+🏏 cricket game
+🏐 volleyball
+🏑 field hockey
+🏒 ice hockey
+🏓 ping pong
+🏔️ snow-capped mountain
+🏕️ camping
+🏖️ beach with umbrella
+🏗️ building construction
+🏘️ houses
+🏙️ cityscape
+🏚️ derelict house
+🏛️ classical building
+🏜️ desert
+🏝️ desert island
+🏞️ national park
+🏟️ stadium
+🏠 house
+🏡 house with garden
+🏢 office building
+🏣 Japanese post office
+🏤 post office
+🏥 hospital
+🏦 bank
+🏧 ATM sign
+🏨 hotel
+🏩 love hotel
+🏪 convenience store
+🏫 school
+🏬 department store
+🏭 factory
+🏮 red paper lantern
+🏯 Japanese castle
+🏰 castle
+🏳️ white flag
+🏴 black flag
+🏵️ rosette
+🏷️ label
+🏸 badminton
+🏹 bow and arrow
+🏺 amphora
+🐀 rat
+🐁 mouse
+🐂 ox
+🐃 water buffalo
+🐄 cow
+🐅 tiger
+🐆 leopard
+🐇 rabbit
+🐈 cat
+🐉 dragon
+🐊 crocodile
+🐋 whale
+🐌 snail
+🐍 snake
+🐎 horse
+🐏 ram
+🐐 goat
+🐑 ewe
+🐒 monkey
+🐓 rooster
+🐔 chicken
+🐕 dog
+🐖 pig
+🐗 boar
+🐘 elephant
+🐙 octopus
+🐚 spiral shell
+🐛 bug
+🐜 ant
+🐝 honeybee
+🐞 lady beetle
+🐟 fish
+🐠 tropical fish
+🐡 blowfish
+🐢 turtle
+🐣 hatching chick
+🐤 baby chick
+🐥 front-facing baby chick
+🐦 bird
+🐧 penguin
+🐨 koala
+🐩 poodle
+🐪 camel
+🐫 two-hump camel
+🐬 dolphin
+🐭 mouse face
+🐮 cow face
+🐯 tiger face
+🐰 rabbit face
+🐱 cat face
+🐲 dragon face
+🐳 spouting whale
+🐴 horse face
+🐵 monkey face
+🐶 dog face
+🐷 pig face
+🐸 frog
+🐹 hamster
+🐺 wolf
+🐻 bear
+🐼 panda
+🐽 pig nose
+🐾 paw prints
+🐿️ chipmunk
+👀 eyes
+👁️ eye
+👂 ear
+👃 nose
+👄 mouth
+👅 tongue
+👆 backhand index pointing up
+👇 backhand index pointing down
+👈 backhand index pointing left
+👉 backhand index pointing right
+👊 oncoming fist
+👋 waving hand
+👌 OK hand
+👍 thumbs up
+👎 thumbs down
+👏 clapping hands
+👐 open hands
+👑 crown
+👒 woman’s hat
+👓 glasses
+👔 necktie
+👕 t-shirt
+👖 jeans
+👗 dress
+👘 kimono
+👙 bikini
+👚 woman’s clothes
+👛 purse
+👜 handbag
+👝 clutch bag
+👞 man’s shoe
+👟 running shoe
+👠 high-heeled shoe
+👡 woman’s sandal
+👢 woman’s boot
+👣 footprints
+👤 bust in silhouette
+👥 busts in silhouette
+👦 boy
+👧 girl
+👨 man
+👩 woman
+👪 family
+👫 woman and man holding hands
+👬 men holding hands
+👭 women holding hands
+👮 police officer
+👯 people with bunny ears
+👰 person with veil
+👱 person: blond hair
+👲 person with skullcap
+👳 person wearing turban
+👴 old man
+👵 old woman
+👶 baby
+👷 construction worker
+👸 princess
+👹 ogre
+👺 goblin
+👻 ghost
+👼 baby angel
+👽 alien
+👾 alien monster
+👿 angry face with horns
+💀 skull
+💁 person tipping hand
+💂 guard
+💃 woman dancing
+💄 lipstick
+💅 nail polish
+💆 person getting massage
+💇 person getting haircut
+💈 barber pole
+💉 syringe
+💊 pill
+💋 kiss mark
+💌 love letter
+💍 ring
+💎 gem stone
+💏 kiss
+💐 bouquet
+💑 couple with heart
+💒 wedding
+💓 beating heart
+💔 broken heart
+💕 two hearts
+💖 sparkling heart
+💗 growing heart
+💘 heart with arrow
+💙 blue heart
+💚 green heart
+💛 yellow heart
+💜 purple heart
+💝 heart with ribbon
+💞 revolving hearts
+💟 heart decoration
+💠 diamond with a dot
+💡 light bulb
+💢 anger symbol
+💣 bomb
+💤 ZZZ
+💥 collision
+💦 sweat droplets
+💧 droplet
+💨 dashing away
+💩 pile of poo
+💪 flexed biceps
+💫 dizzy
+💬 speech balloon
+💭 thought balloon
+💮 white flower
+💯 hundred points
+💰 money bag
+💱 currency exchange
+💲 heavy dollar sign
+💳 credit card
+💴 yen banknote
+💵 dollar banknote
+💶 euro banknote
+💷 pound banknote
+💸 money with wings
+💹 chart increasing with yen
+💺 seat
+💻 laptop
+💼 briefcase
+💽 computer disk
+💾 floppy disk
+💿 optical disk
+📀 dvd
+📁 file folder
+📂 open file folder
+📃 page with curl
+📄 page facing up
+📅 calendar
+📆 tear-off calendar
+📇 card index
+📈 chart increasing
+📉 chart decreasing
+📊 bar chart
+📋 clipboard
+📌 pushpin
+📍 round pushpin
+📎 paperclip
+📏 straight ruler
+📐 triangular ruler
+📑 bookmark tabs
+📒 ledger
+📓 notebook
+📔 notebook with decorative cover
+📕 closed book
+📖 open book
+📗 green book
+📘 blue book
+📙 orange book
+📚 books
+📛 name badge
+📜 scroll
+📝 memo
+📞 telephone receiver
+📟 pager
+📠 fax machine
+📡 satellite antenna
+📢 loudspeaker
+📣 megaphone
+📤 outbox tray
+📥 inbox tray
+📦 package
+📧 e-mail
+📨 incoming envelope
+📩 envelope with arrow
+📪 closed mailbox with lowered flag
+📫 closed mailbox with raised flag
+📬 open mailbox with raised flag
+📭 open mailbox with lowered flag
+📮 postbox
+📯 postal horn
+📰 newspaper
+📱 mobile phone
+📲 mobile phone with arrow
+📳 vibration mode
+📴 mobile phone off
+📵 no mobile phones
+📶 antenna bars
+📷 camera
+📸 camera with flash
+📹 video camera
+📺 television
+📻 radio
+📼 videocassette
+📽️ film projector
+📿 prayer beads
+🔀 shuffle tracks button
+🔁 repeat button
+🔂 repeat single button
+🔃 clockwise vertical arrows
+🔄 counterclockwise arrows button
+🔅 dim button
+🔆 bright button
+🔇 muted speaker
+🔈 speaker low volume
+🔉 speaker medium volume
+🔊 speaker high volume
+🔋 battery
+🔌 electric plug
+🔍 magnifying glass tilted left
+🔎 magnifying glass tilted right
+🔏 locked with pen
+🔐 locked with key
+🔑 key
+🔒 locked
+🔓 unlocked
+🔔 bell
+🔕 bell with slash
+🔖 bookmark
+🔗 link
+🔘 radio button
+🔙 BACK arrow
+🔚 END arrow
+🔛 ON! arrow
+🔜 SOON arrow
+🔝 TOP arrow
+🔞 no one under eighteen
+🔟 keycap ten
+🔠 input latin uppercase
+🔡 input latin lowercase
+🔢 input numbers
+🔣 input symbols
+🔤 input latin letters
+🔥 fire
+🔦 flashlight
+🔧 wrench
+🔨 hammer
+🔩 nut and bolt
+🔪 kitchen knife
+🔫 water pistol
+🔬 microscope
+🔭 telescope
+🔮 crystal ball
+🔯 dotted six-pointed star
+🔰 Japanese symbol for beginner
+🔱 trident emblem
+🔲 black square button
+🔳 white square button
+🔴 red circle
+🔵 blue circle
+🔶 large orange diamond
+🔷 large blue diamond
+🔸 small orange diamond
+🔹 small blue diamond
+🔺 red triangle pointed up
+🔻 red triangle pointed down
+🔼 upwards button
+🔽 downwards button
+🕉️ om
+🕊️ dove
+🕋 kaaba
+🕌 mosque
+🕍 synagogue
+🕎 menorah
+🕐 one o’clock
+🕑 two o’clock
+🕒 three o’clock
+🕓 four o’clock
+🕔 five o’clock
+🕕 six o’clock
+🕖 seven o’clock
+🕗 eight o’clock
+🕘 nine o’clock
+🕙 ten o’clock
+🕚 eleven o’clock
+🕛 twelve o’clock
+🕜 one-thirty
+🕝 two-thirty
+🕞 three-thirty
+🕟 four-thirty
+🕠 five-thirty
+🕡 six-thirty
+🕢 seven-thirty
+🕣 eight-thirty
+🕤 nine-thirty
+🕥 ten-thirty
+🕦 eleven-thirty
+🕧 twelve-thirty
+🕯️ candle
+🕰️ mantelpiece clock
+🕳️ hole
+🕴️ person in suit levitating
+🕵️ detective
+🕶️ sunglasses
+🕷️ spider
+🕸️ spider web
+🕹️ joystick
+🕺 man dancing
+🖇️ linked paperclips
+🖊️ pen
+🖋️ fountain pen
+🖌️ paintbrush
+🖍️ crayon
+🖐️ hand with fingers splayed
+🖕 middle finger
+🖖 vulcan salute
+🖤 black heart
+🖥️ desktop computer
+🖨️ printer
+🖱️ computer mouse
+🖲️ trackball
+🖼️ framed picture
+🗂️ card index dividers
+🗃️ card file box
+🗄️ file cabinet
+🗑️ wastebasket
+🗒️ spiral notepad
+🗓️ spiral calendar
+🗜️ clamp
+🗝️ old key
+🗞️ rolled-up newspaper
+🗡️ dagger
+🗣️ speaking head
+🗨️ left speech bubble
+🗯️ right anger bubble
+🗳️ ballot box with ballot
+🗺️ world map
+🗻 mount fuji
+🗼 Tokyo tower
+🗽 Statue of Liberty
+🗾 map of Japan
+🗿 moai
+😀 grinning face
+😁 beaming face with smiling eyes
+😂 face with tears of joy
+😃 grinning face with big eyes
+😄 grinning face with smiling eyes
+😅 grinning face with sweat
+😆 grinning squinting face
+😇 smiling face with halo
+😈 smiling face with horns
+😉 winking face
+😊 smiling face with smiling eyes
+😋 face savoring food
+😌 relieved face
+😍 smiling face with heart-eyes
+😎 smiling face with sunglasses
+😏 smirking face
+😐 neutral face
+😑 expressionless face
+😒 unamused face
+😓 downcast face with sweat
+😔 pensive face
+😕 confused face
+😖 confounded face
+😗 kissing face
+😘 face blowing a kiss
+😙 kissing face with smiling eyes
+😚 kissing face with closed eyes
+😛 face with tongue
+😜 winking face with tongue
+😝 squinting face with tongue
+😞 disappointed face
+😟 worried face
+😠 angry face
+😡 enraged face
+😢 crying face
+😣 persevering face
+😤 face with steam from nose
+😥 sad but relieved face
+😦 frowning face with open mouth
+😧 anguished face
+😨 fearful face
+😩 weary face
+😪 sleepy face
+😫 tired face
+😬 grimacing face
+😭 loudly crying face
+😮 face with open mouth
+😯 hushed face
+😰 anxious face with sweat
+😱 face screaming in fear
+😲 astonished face
+😳 flushed face
+😴 sleeping face
+😵 face with crossed-out eyes
+😶 face without mouth
+😷 face with medical mask
+😸 grinning cat with smiling eyes
+😹 cat with tears of joy
+😺 grinning cat
+😻 smiling cat with heart-eyes
+😼 cat with wry smile
+😽 kissing cat
+😾 pouting cat
+😿 crying cat
+🙀 weary cat
+🙁 slightly frowning face
+🙂 slightly smiling face
+🙃 upside-down face
+🙄 face with rolling eyes
+🙅 person gesturing NO
+🙆 person gesturing OK
+🙇 person bowing
+🙈 see-no-evil monkey
+🙉 hear-no-evil monkey
+🙊 speak-no-evil monkey
+🙋 person raising hand
+🙌 raising hands
+🙍 person frowning
+🙎 person pouting
+🙏 folded hands
+🚀 rocket
+🚁 helicopter
+🚂 locomotive
+🚃 railway car
+🚄 high-speed train
+🚅 bullet train
+🚆 train
+🚇 metro
+🚈 light rail
+🚉 station
+🚊 tram
+🚋 tram car
+🚌 bus
+🚍 oncoming bus
+🚎 trolleybus
+🚏 bus stop
+🚐 minibus
+🚑 ambulance
+🚒 fire engine
+🚓 police car
+🚔 oncoming police car
+🚕 taxi
+🚖 oncoming taxi
+🚗 automobile
+🚘 oncoming automobile
+🚙 sport utility vehicle
+🚚 delivery truck
+🚛 articulated lorry
+🚜 tractor
+🚝 monorail
+🚞 mountain railway
+🚟 suspension railway
+🚠 mountain cableway
+🚡 aerial tramway
+🚢 ship
+🚣 person rowing boat
+🚤 speedboat
+🚥 horizontal traffic light
+🚦 vertical traffic light
+🚧 construction
+🚨 police car light
+🚩 triangular flag
+🚪 door
+🚫 prohibited
+🚬 cigarette
+🚭 no smoking
+🚮 litter in bin sign
+🚯 no littering
+🚰 potable water
+🚱 non-potable water
+🚲 bicycle
+🚳 no bicycles
+🚴 person biking
+🚵 person mountain biking
+🚶 person walking
+🚷 no pedestrians
+🚸 children crossing
+🚹 men’s room
+🚺 women’s room
+🚻 restroom
+🚼 baby symbol
+🚽 toilet
+🚾 water closet
+🚿 shower
+🛀 person taking bath
+🛁 bathtub
+🛂 passport control
+🛃 customs
+🛄 baggage claim
+🛅 left luggage
+🛋️ couch and lamp
+🛌 person in bed
+🛍️ shopping bags
+🛎️ bellhop bell
+🛏️ bed
+🛐 place of worship
+🛑 stop sign
+🛒 shopping cart
+🛕 hindu temple
+🛖 hut
+🛗 elevator
+🛘 landslide
+🛙 lighthouse
+🛜 wireless
+🛝 playground slide
+🛞 wheel
+🛟 ring buoy
+🛠️ hammer and wrench
+🛡️ shield
+🛢️ oil drum
+🛣️ motorway
+🛤️ railway track
+🛥️ motor boat
+🛩️ small airplane
+🛫 airplane departure
+🛬 airplane arrival
+🛰️ satellite
+🛳️ passenger ship
+🛴 kick scooter
+🛵 motor scooter
+🛶 canoe
+🛷 sled
+🛸 flying saucer
+🛹 skateboard
+🛺 auto rickshaw
+🛻 pickup truck
+🛼 roller skate
+🟠 orange circle
+🟡 yellow circle
+🟢 green circle
+🟣 purple circle
+🟤 brown circle
+🟥 red square
+🟦 blue square
+🟧 orange square
+🟨 yellow square
+🟩 green square
+🟪 purple square
+🟫 brown square
+🟰 heavy equals sign
+🤌 pinched fingers
+🤍 white heart
+🤎 brown heart
+🤏 pinching hand
+🤐 zipper-mouth face
+🤑 money-mouth face
+🤒 face with thermometer
+🤓 nerd face
+🤔 thinking face
+🤕 face with head-bandage
+🤖 robot
+🤗 smiling face with open hands
+🤘 sign of the horns
+🤙 call me hand
+🤚 raised back of hand
+🤛 left-facing fist
+🤜 right-facing fist
+🤝 handshake
+🤞 crossed fingers
+🤟 love-you gesture
+🤠 cowboy hat face
+🤡 clown face
+🤢 nauseated face
+🤣 rolling on the floor laughing
+🤤 drooling face
+🤥 lying face
+🤦 person facepalming
+🤧 sneezing face
+🤨 face with raised eyebrow
+🤩 star-struck
+🤪 zany face
+🤫 shushing face
+🤬 face with symbols on mouth
+🤭 face with hand over mouth
+🤮 face vomiting
+🤯 exploding head
+🤰 pregnant woman
+🤱 breast-feeding
+🤲 palms up together
+🤳 selfie
+🤴 prince
+🤵 person in tuxedo
+🤶 Mrs. Claus
+🤷 person shrugging
+🤸 person cartwheeling
+🤹 person juggling
+🤺 person fencing
+🤼 people wrestling
+🤽 person playing water polo
+🤾 person playing handball
+🤿 diving mask
+🥀 wilted flower
+🥁 drum
+🥂 clinking glasses
+🥃 tumbler glass
+🥄 spoon
+🥅 goal net
+🥇 1st place medal
+🥈 2nd place medal
+🥉 3rd place medal
+🥊 boxing glove
+🥋 martial arts uniform
+🥌 curling stone
+🥍 lacrosse
+🥎 softball
+🥏 flying disc
+🥐 croissant
+🥑 avocado
+🥒 cucumber
+🥓 bacon
+🥔 potato
+🥕 carrot
+🥖 baguette bread
+🥗 green salad
+🥘 shallow pan of food
+🥙 stuffed flatbread
+🥚 egg
+🥛 glass of milk
+🥜 peanuts
+🥝 kiwi fruit
+🥞 pancakes
+🥟 dumpling
+🥠 fortune cookie
+🥡 takeout box
+🥢 chopsticks
+🥣 bowl with spoon
+🥤 cup with straw
+🥥 coconut
+🥦 broccoli
+🥧 pie
+🥨 pretzel
+🥩 cut of meat
+🥪 sandwich
+🥫 canned food
+🥬 leafy green
+🥭 mango
+🥮 moon cake
+🥯 bagel
+🥰 smiling face with hearts
+🥱 yawning face
+🥲 smiling face with tear
+🥳 partying face
+🥴 woozy face
+🥵 hot face
+🥶 cold face
+🥷 ninja
+🥸 disguised face
+🥹 face holding back tears
+🥺 pleading face
+🥻 sari
+🥼 lab coat
+🥽 goggles
+🥾 hiking boot
+🥿 flat shoe
+🦀 crab
+🦁 lion
+🦂 scorpion
+🦃 turkey
+🦄 unicorn
+🦅 eagle
+🦆 duck
+🦇 bat
+🦈 shark
+🦉 owl
+🦊 fox
+🦋 butterfly
+🦌 deer
+🦍 gorilla
+🦎 lizard
+🦏 rhinoceros
+🦐 shrimp
+🦑 squid
+🦒 giraffe
+🦓 zebra
+🦔 hedgehog
+🦕 sauropod
+🦖 T-Rex
+🦗 cricket
+🦘 kangaroo
+🦙 llama
+🦚 peacock
+🦛 hippopotamus
+🦜 parrot
+🦝 raccoon
+🦞 lobster
+🦟 mosquito
+🦠 microbe
+🦡 badger
+🦢 swan
+🦣 mammoth
+🦤 dodo
+🦥 sloth
+🦦 otter
+🦧 orangutan
+🦨 skunk
+🦩 flamingo
+🦪 oyster
+🦫 beaver
+🦬 bison
+🦭 seal
+🦮 guide dog
+🦯 white cane
+🦴 bone
+🦵 leg
+🦶 foot
+🦷 tooth
+🦸 superhero
+🦹 supervillain
+🦺 safety vest
+🦻 ear with hearing aid
+🦼 motorized wheelchair
+🦽 manual wheelchair
+🦾 mechanical arm
+🦿 mechanical leg
+🧀 cheese wedge
+🧁 cupcake
+🧂 salt
+🧃 beverage box
+🧄 garlic
+🧅 onion
+🧆 falafel
+🧇 waffle
+🧈 butter
+🧉 mate
+🧊 ice
+🧋 bubble tea
+🧌 troll
+🧍 person standing
+🧎 person kneeling
+🧏 deaf person
+🧐 face with monocle
+🧑 person
+🧒 child
+🧓 older person
+🧔 person: beard
+🧕 woman with headscarf
+🧖 person in steamy room
+🧗 person climbing
+🧘 person in lotus position
+🧙 mage
+🧚 fairy
+🧛 vampire
+🧜 merperson
+🧝 elf
+🧞 genie
+🧟 zombie
+🧠 brain
+🧡 orange heart
+🧢 billed cap
+🧣 scarf
+🧤 gloves
+🧥 coat
+🧦 socks
+🧧 red envelope
+🧨 firecracker
+🧩 puzzle piece
+🧪 test tube
+🧫 petri dish
+🧬 dna
+🧭 compass
+🧮 abacus
+🧯 fire extinguisher
+🧰 toolbox
+🧱 brick
+🧲 magnet
+🧳 luggage
+🧴 lotion bottle
+🧵 thread
+🧶 yarn
+🧷 safety pin
+🧸 teddy bear
+🧹 broom
+🧺 basket
+🧻 roll of paper
+🧼 soap
+🧽 sponge
+🧾 receipt
+🧿 nazar amulet
+🩰 ballet shoes
+🩱 one-piece swimsuit
+🩲 briefs
+🩳 shorts
+🩴 thong sandal
+🩵 light blue heart
+🩶 grey heart
+🩷 pink heart
+🩸 drop of blood
+🩹 adhesive bandage
+🩺 stethoscope
+🩻 x-ray
+🩼 crutch
+🪀 yo-yo
+🪁 kite
+🪂 parachute
+🪃 boomerang
+🪄 magic wand
+🪅 piñata
+🪆 nesting dolls
+🪇 maracas
+🪈 flute
+🪉 harp
+🪊 trombone
+🪋 meteor
+🪌 eraser
+🪍 net with handle
+🪎 treasure chest
+🪏 shovel
+🪐 ringed planet
+🪑 chair
+🪒 razor
+🪓 axe
+🪔 diya lamp
+🪕 banjo
+🪖 military helmet
+🪗 accordion
+🪘 long drum
+🪙 coin
+🪚 carpentry saw
+🪛 screwdriver
+🪜 ladder
+🪝 hook
+🪞 mirror
+🪟 window
+🪠 plunger
+🪡 sewing needle
+🪢 knot
+🪣 bucket
+🪤 mouse trap
+🪥 toothbrush
+🪦 headstone
+🪧 placard
+🪨 rock
+🪩 mirror ball
+🪪 identification card
+🪫 low battery
+🪬 hamsa
+🪭 folding hand fan
+🪮 hair pick
+🪯 khanda
+🪰 fly
+🪱 worm
+🪲 beetle
+🪳 cockroach
+🪴 potted plant
+🪵 wood
+🪶 feather
+🪷 lotus
+🪸 coral
+🪹 empty nest
+🪺 nest with eggs
+🪻 hyacinth
+🪼 jellyfish
+🪽 wing
+🪾 leafless tree
+🪿 goose
+🫀 anatomical heart
+🫁 lungs
+🫂 people hugging
+🫃 pregnant man
+🫄 pregnant person
+🫅 person with crown
+🫆 fingerprint
+🫈 hairy creature
+🫌 monarch butterfly
+🫍 orca
+🫎 moose
+🫏 donkey
+🫐 blueberries
+🫑 bell pepper
+🫒 olive
+🫓 flatbread
+🫔 tamale
+🫕 fondue
+🫖 teapot
+🫗 pouring liquid
+🫘 beans
+🫙 jar
+🫚 ginger root
+🫛 pea pod
+🫜 root vegetable
+🫝 pickle
+🫟 splatter
+🫠 melting face
+🫡 saluting face
+🫢 face with open eyes and hand over mouth
+🫣 face with peeking eye
+🫤 face with diagonal mouth
+🫥 dotted line face
+🫦 biting lip
+🫧 bubbles
+🫨 shaking face
+🫩 face with bags under eyes
+🫪 distorted face
+🫫 cracking face
+🫯 fight cloud
+🫰 hand with index finger and thumb crossed
+🫱 rightwards hand
+🫲 leftwards hand
+🫳 palm down hand
+🫴 palm up hand
+🫵 index pointing at the viewer
+🫶 heart hands
+🫷 leftwards pushing hand
+🫸 rightwards pushing hand
+🫹 leftwards thumb sign
+🫺 rightwards thumb sign
+`;
+var EMOJI = EMOJI_LIST.trim().split('\n').map(function (line) {
+  var at = line.indexOf(' ');
+  return { char: line.slice(0, at), name: line.slice(at + 1) };
+});
+
+function rng(seed) {
+  var a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    var t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffle(a, rand) {
+  var out = a.slice();
+  for (var i = out.length - 1; i > 0; i--) {
+    var j = Math.floor(rand() * (i + 1));
+    var t = out[i];
+    out[i] = out[j];
+    out[j] = t;
+  }
+  return out;
+}
+
+function range(n) {
+  return Array.from({ length: n }, function (_, i) { return i; });
+}
+
+/* Every row and column as { kind, k, cells }, rows first. */
+function linesOf(size) {
+  var rows = range(size).map(function (r) {
+    return { kind: 'row', k: r, cells: range(size).map(function (c) { return r * size + c; }) };
+  });
+  var cols = range(size).map(function (c) {
+    return { kind: 'column', k: c, cells: range(size).map(function (r) { return r * size + c; }) };
+  });
+  return rows.concat(cols);
+}
+
+/* The lengths of the runs of 1s in a line. */
+function runs(values) {
+  var out = [];
+  var run = 0;
+  values.concat([0]).forEach(function (v) {
+    if (v === 1) {
+      run++;
+    } else if (run > 0) {
+      out.push(run);
+      run = 0;
+    }
+  });
+  return out;
+}
+
+/* The clues of every line, in the order of linesOf. */
+function cluesOf(size, solution) {
+  return linesOf(size).map(function (line) {
+    return runs(line.cells.map(function (i) { return solution[i]; }));
+  });
+}
+
+/* What every way to place a clue's runs in a line agrees on: the line with
+ * each cell 1, 0 or EMPTY when ways disagree. Returns null if no way fits.
+ *
+ * before[j][i] says the first i cells can hold the first j runs, each with a
+ * gap after it; after[j][i] says cells i and on can hold runs j and on. Past
+ * the end is one more cell that is always a gap. */
+function solveLine(clue, cells) {
+  var n = cells.length;
+  var k = clue.length;
+  var zeros = [0];
+  cells.forEach(function (v, i) { zeros.push(zeros[i] + (v === 0 ? 1 : 0)); });
+  function gap(i) { return i >= n || cells[i] !== 1; }
+  function fits(j, s) {
+    var e = s + clue[j];
+    return e <= n && zeros[e] === zeros[s] && gap(e);
+  }
+  var before = range(k + 1).map(function () { return new Array(n + 2).fill(false); });
+  var after = range(k + 1).map(function () { return new Array(n + 2).fill(false); });
+  before[0][0] = true;
+  after[k][n + 1] = true;
+  for (var i = 0; i <= n; i++) {
+    for (var j = 0; j <= k; j++) {
+      if (!before[j][i]) continue;
+      if (gap(i)) before[j][i + 1] = true;
+      if (j < k && fits(j, i)) before[j + 1][i + clue[j] + 1] = true;
+    }
+  }
+  for (i = n; i >= 0; i--) {
+    for (j = k; j >= 0; j--) {
+      var asGap = gap(i) && after[j][i + 1];
+      var asRun = j < k && fits(j, i) && after[j + 1][i + clue[j] + 1];
+      after[j][i] = asGap || asRun;
+    }
+  }
+  if (!before[k][n + 1]) return null;
+  var canGap = new Array(n).fill(false);
+  var runStarts = new Array(n + 1).fill(0);
+  for (i = 0; i < n; i++) {
+    for (j = 0; j <= k; j++) {
+      if (!before[j][i]) continue;
+      if (gap(i) && after[j][i + 1]) canGap[i] = true;
+      if (j < k && fits(j, i) && after[j + 1][i + clue[j] + 1]) {
+        runStarts[i]++;
+        runStarts[i + clue[j]]--;
+        if (i + clue[j] < n) canGap[i + clue[j]] = true;
+      }
+    }
+  }
+  var covering = 0;
+  return cells.map(function (_, i) {
+    covering += runStarts[i];
+    if (covering > 0 && canGap[i]) return EMPTY;
+    if (covering > 0) return 1;
+    return 0;
+  });
+}
+
+/* Applies solveLine to every line until nothing changes. Returns the
+ * values, or null on reaching a contradiction. */
+function solve(size, clues, start) {
+  var values = start ? start.slice() : new Array(size * size).fill(EMPTY);
+  var lines = linesOf(size);
+  var changed = true;
+  while (changed) {
+    changed = false;
+    for (var l = 0; l < lines.length; l++) {
+      var cells = lines[l].cells;
+      var known = solveLine(clues[l], cells.map(function (i) { return values[i]; }));
+      if (known === null) return null;
+      cells.forEach(function (i, k) {
+        if (values[i] !== known[k]) {
+          values[i] = known[k];
+          changed = true;
+        }
+      });
+    }
+  }
+  return values;
+}
+
+function isFull(values) {
+  return values.indexOf(EMPTY) < 0;
+}
+
+/* What the solver may take from the player's marks: a fill is a 1, a cross
+ * a 0, anything else unknown. */
+function knownOf(marks) {
+  return marks.map(function (m) {
+    if (m === FILL) return 1;
+    if (m === CROSS) return 0;
+    return EMPTY;
+  });
+}
+
+/* The line that can be worked out the furthest from the marks alone, as
+ * { line, cells } with the cells it settles, or null if none can. */
+function nextStep(size, clues, marks) {
+  var known = knownOf(marks);
+  var best = null;
+  linesOf(size).forEach(function (line, l) {
+    var result = solveLine(clues[l], line.cells.map(function (i) { return known[i]; }));
+    if (result === null) return;
+    var cells = line.cells.filter(function (i, k) { return known[i] === EMPTY && result[k] !== EMPTY; });
+    if (cells.length && (best === null || cells.length > best.cells.length)) best = { line: line, cells: cells };
+  });
+  return best;
+}
+
+/* The lines whose marks no longer fit their clue. */
+function brokenLines(size, clues, marks) {
+  var known = knownOf(marks);
+  return linesOf(size).filter(function (line, l) {
+    return solveLine(clues[l], line.cells.map(function (i) { return known[i]; })) === null;
+  });
+}
+
+/* The lines whose fills spell out their clue exactly. */
+function doneLines(size, clues, marks) {
+  return linesOf(size).filter(function (line, l) {
+    var filled = line.cells.map(function (i) { return marks[i] === FILL ? 1 : 0; });
+    return runs(filled).join() === clues[l].join();
+  });
+}
+
+function isSolved(solution, marks) {
+  return solution.every(function (v, i) { return (v === 1) === (marks[i] === FILL); });
+}
+
+/* --- pictures ---------------------------------------------------------- */
+
+/* How dark an RGBA image is in each of size x size cells, from 0 to 1,
+ * after cropping it to what is drawn and centring that in a square. Returns
+ * null if nothing is drawn. */
+function levelsOf(rgba, width, size) {
+  var height = rgba.length / 4 / width;
+  var dark = new Array(width * height);
+  var minX = width;
+  var minY = height;
+  var maxX = -1;
+  var maxY = -1;
+  for (var p = 0; p < width * height; p++) {
+    var a = rgba[p * 4 + 3] / 255;
+    var lum = (0.2126 * rgba[p * 4] + 0.7152 * rgba[p * 4 + 1] + 0.0722 * rgba[p * 4 + 2]) / 255;
+    dark[p] = a * (1 - lum);
+    if (a > 0.1) {
+      var x = p % width;
+      var y = Math.floor(p / width);
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+  }
+  if (maxX < 0) return null;
+  var side = Math.max(maxX - minX, maxY - minY) + 1;
+  var x0 = minX - (side - (maxX - minX + 1)) / 2;
+  var y0 = minY - (side - (maxY - minY + 1)) / 2;
+  /* Pixels of the square that fall outside the image count as blank. */
+  var sums = new Array(size * size).fill(0);
+  var counts = new Array(size * size).fill(0);
+  for (var sy = 0; sy < side; sy++) {
+    for (var sx = 0; sx < side; sx++) {
+      var cell = Math.floor(sy / side * size) * size + Math.floor(sx / side * size);
+      x = Math.round(x0 + sx);
+      y = Math.round(y0 + sy);
+      counts[cell]++;
+      if (x >= 0 && x < width && y >= 0 && y < height) sums[cell] += dark[y * width + x];
+    }
+  }
+  return sums.map(function (s, i) { return s / counts[i]; });
+}
+
+/* The levels flipped left to right. */
+function mirror(levels, size) {
+  return levels.map(function (_, i) {
+    var r = Math.floor(i / size);
+    var c = i % size;
+    return levels[r * size + (size - 1 - c)];
+  });
+}
+
+/* The level at which the darkest share of the cells is filled. */
+function cutoffAt(levels, share) {
+  var sorted = levels.slice().sort(function (a, b) { return b - a; });
+  return sorted[Math.max(0, Math.round(share * levels.length) - 1)];
+}
+
+/* The level that splits the cells into the two groups that differ the
+ * most, by Otsu's method: for a picture on a blank background, usually
+ * where the background ends. */
+function naturalCutoff(levels) {
+  var sorted = levels.slice().sort(function (a, b) { return a - b; });
+  var total = sorted.reduce(function (sum, v) { return sum + v; }, 0);
+  var n = sorted.length;
+  var best = { score: -1, cutoff: sorted[n - 1] };
+  var below = 0;
+  for (var k = 1; k < n; k++) {
+    below += sorted[k - 1];
+    if (sorted[k] === sorted[k - 1]) continue;
+    var meanBelow = below / k;
+    var meanAbove = (total - below) / (n - k);
+    var score = k * (n - k) * (meanAbove - meanBelow) * (meanAbove - meanBelow);
+    if (score > best.score) best = { score: score, cutoff: sorted[k] };
+  }
+  return best.cutoff;
+}
+
+function thresholdAt(levels, cutoff) {
+  return levels.map(function (v) { return v >= cutoff && v > 0 ? 1 : 0; });
+}
+
+function unknownCount(size, solution) {
+  var solved = solve(size, cluesOf(size, solution));
+  if (solved === null) return solution.length;
+  return solved.filter(function (v) { return v === EMPTY; }).length;
+}
+
+/* Whether a solution reads as a picture: neither too empty nor too full,
+ * and not so broken up that it is noise. */
+function readsWell(size, solution) {
+  var filled = solution.filter(function (v) { return v === 1; }).length / solution.length;
+  if (filled < 0.25 || filled > 0.75) return false;
+  var clues = cluesOf(size, solution);
+  var total = clues.reduce(function (sum, clue) { return sum + clue.length; }, 0);
+  return total / clues.length <= MAX_RUNS * size;
+}
+
+/* Makes a solution that the line solver can not finish solvable by
+ * flipping a few of the cells it gets stuck on: each time the one that
+ * leaves the fewest unknown, out of the FLIP_TRIES whose level is closest
+ * to the cutoff, so the picture changes where it matters least. Gives up
+ * with null after MAX_FLIPS of the cells. */
+function repair(size, solution, levels, cutoff) {
+  var current = solution.slice();
+  var left = unknownCount(size, current);
+  for (var flips = 0; left > 0; flips++) {
+    if (flips >= MAX_FLIPS * size * size) return null;
+    var stuck = solve(size, cluesOf(size, current));
+    var candidates = range(size * size)
+      .filter(function (i) { return stuck === null || stuck[i] === EMPTY; })
+      .sort(function (a, b) { return Math.abs(levels[a] - cutoff) - Math.abs(levels[b] - cutoff); })
+      .slice(0, FLIP_TRIES);
+    var best = null;
+    candidates.forEach(function (i) {
+      var flipped = current.slice();
+      flipped[i] = 1 - flipped[i];
+      var count = unknownCount(size, flipped);
+      if (best === null || count < best.count) best = { solution: flipped, count: count };
+    });
+    current = best.solution;
+    left = best.count;
+  }
+  return current;
+}
+
+/* A solution from the levels that reads as a picture and that the line
+ * solver works out completely, which also makes it the only one; or null. */
+function solutionOf(levels, size) {
+  var cutoffs = [naturalCutoff(levels)].concat(SHARES.map(function (share) { return cutoffAt(levels, share); }));
+  for (var s = 0; s < cutoffs.length; s++) {
+    var cutoff = cutoffs[s];
+    var solution = thresholdAt(levels, cutoff);
+    if (!readsWell(size, solution)) continue;
+    var fixed = repair(size, solution, levels, cutoff);
+    if (fixed !== null && readsWell(size, fixed)) return fixed;
+  }
+  return null;
+}
+
+/* --- decks: every puzzle once before any comes back -------------------- */
+
+/* A puzzle in a deck is a number: the emoji's index, times two, plus one
+ * when mirrored. */
+function freshDeck(rand) {
+  return shuffle(range(EMOJI.length * 2), rand);
+}
+
+/* A puzzle is { size, char, name, mirrored, solution }. Takes puzzles off
+ * the deck for size until one makes a picture; levelsFor(char, size) draws
+ * an emoji. Refills the deck when it runs out, and gives up with null after
+ * going through all of it once. Returns the puzzle and the deck left. */
+function nextPuzzle(deck, size, levelsFor, rand) {
+  var left = deck.slice();
+  for (var tried = 0; tried < EMOJI.length * 2; tried++) {
+    if (left.length === 0) left = freshDeck(rand);
+    var pick = left.pop();
+    var emoji = EMOJI[Math.floor(pick / 2)];
+    var mirrored = pick % 2 === 1;
+    var levels = levelsFor(emoji.char, size);
+    if (levels === null) continue;
+    if (mirrored) levels = mirror(levels, size);
+    var solution = solutionOf(levels, size);
+    if (solution === null) continue;
+    return { puzzle: { size: size, char: emoji.char, name: emoji.name, mirrored: mirrored, solution: solution }, deck: left };
+  }
+  return { puzzle: null, deck: left };
+}
+
+/* --- persistence ----------------------------------------------------- */
+
+function isArrayOf(a, length, allowed) {
+  if (!Array.isArray(a) || a.length !== length) return false;
+  return a.every(function (v) { return allowed.indexOf(v) >= 0; });
+}
+
+function serialize(puzzle, state) {
+  return JSON.stringify({
+    version: 1,
+    puzzle: puzzle,
+    state: { marks: state.marks, undo: state.undo, hints: state.hints, elapsed: state.elapsed }
+  });
+}
+
+function deserialize(text) {
+  if (!text) return null;
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+  if (!data || data.version !== 1 || !data.puzzle || !data.state) return null;
+  var p = data.puzzle;
+  var s = data.state;
+  if (SIZES.indexOf(p.size) < 0) return null;
+  if (typeof p.char !== 'string' || typeof p.name !== 'string' || typeof p.mirrored !== 'boolean') return null;
+  if (!isArrayOf(p.solution, p.size * p.size, [0, 1])) return null;
+  if (!isArrayOf(s.marks, p.size * p.size, [UNKNOWN, FILL, CROSS])) return null;
+  if (!Array.isArray(s.undo)) return null;
+  if (!Array.isArray(s.hints) || !s.hints.every(function (h) { return typeof h === 'string'; })) return null;
+  if (!Number.isInteger(s.elapsed) || s.elapsed < 0) return null;
+  return {
+    puzzle: { size: p.size, char: p.char, name: p.name, mirrored: p.mirrored, solution: p.solution },
+    state: { marks: s.marks, undo: s.undo.slice(-UNDO_LIMIT), hints: s.hints, elapsed: s.elapsed }
+  };
+}
+
+/* The decks are a map from size to the puzzles not yet played at it. */
+function deserializeDecks(text) {
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return {};
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
+  var out = {};
+  SIZES.forEach(function (size) {
+    var deck = data[size];
+    if (!Array.isArray(deck)) return;
+    out[size] = deck.filter(function (v) { return Number.isInteger(v) && v >= 0 && v < EMOJI.length * 2; });
+  });
+  return out;
+}
+
+function freshState(puzzle) {
+  return { marks: new Array(puzzle.size * puzzle.size).fill(UNKNOWN), undo: [], hints: [], elapsed: 0 };
+}
+
+/* m:ss, or h:mm:ss once past the hour. */
+function formatTime(ms) {
+  var total = Math.floor(ms / 1000);
+  var h = Math.floor(total / 3600);
+  var m = Math.floor(total / 60) % 60;
+  var ss = String(total % 60).padStart(2, '0');
+  if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + ss;
+  return m + ':' + ss;
+}
+
+/* ------------------------------------------------------------------ *
+ * UI
+ * ------------------------------------------------------------------ */
+
+/* Draws emoji on a canvas and measures them, remembering what a missing
+ * one looks like so those can be left out. */
+function emojiRenderer() {
+  var canvas = document.createElement('canvas');
+  canvas.width = RENDER_SIZE;
+  canvas.height = RENDER_SIZE;
+  var ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = Math.round(RENDER_SIZE * 0.8) + 'px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+  function draw(char, size) {
+    ctx.clearRect(0, 0, RENDER_SIZE, RENDER_SIZE);
+    ctx.fillText(char, RENDER_SIZE / 2, RENDER_SIZE / 2);
+    return levelsOf(ctx.getImageData(0, 0, RENDER_SIZE, RENDER_SIZE).data, RENDER_SIZE, size);
+  }
+  var missing = {};
+  return function (char, size) {
+    if (missing[size] === undefined) missing[size] = JSON.stringify(draw('\u{10FFFD}', size));
+    var levels = draw(char, size);
+    if (JSON.stringify(levels) === missing[size]) return null;
+    return levels;
+  };
+}
+
+function init() {
+  var boardEl = document.getElementById('board');
+  var statusEl = document.getElementById('status');
+  var metaEl = document.getElementById('meta');
+  var menuEl = document.getElementById('menu');
+  var newBtn = document.getElementById('new');
+  var overlayEl = document.getElementById('overlay');
+  var dismissBtn = document.getElementById('dismiss');
+
+  var rand = rng(Math.floor(Math.random() * 4294967296));
+  var levelsFor = emojiRenderer();
+  var puzzle = null;
+  var state = null;
+  var clues = [];
+  var hintCells = [];
+  /* The lines Check found breaking their clue, until the next move. */
+  var badLines = [];
+  var solved = false;
+  var cellEls = [];
+  var clueEls = [];
+  var current = -1;
+  var mode = FILL;
+  var decks = loadDecks();
+  /* When the clock last started or was read, or null while it is stopped. */
+  var clockFrom = null;
+
+  function save() {
+    foldClock();
+    try {
+      localStorage.setItem(STORAGE_KEY, serialize(puzzle, state));
+    } catch (e) {
+      /* private mode / quota: the game still works, it just forgets. */
+    }
+  }
+
+  function load() {
+    try {
+      return deserialize(localStorage.getItem(STORAGE_KEY));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveDecks() {
+    try {
+      localStorage.setItem(DECKS_STORAGE_KEY, JSON.stringify(decks));
+    } catch (e) {
+      /* as in save() */
+    }
+  }
+
+  function loadDecks() {
+    try {
+      return deserializeDecks(localStorage.getItem(DECKS_STORAGE_KEY));
+    } catch (e) {
+      return {};
+    }
+  }
+
+  /* Adds the time since the clock last started or was read to the puzzle. */
+  function foldClock() {
+    if (clockFrom === null) return;
+    var now = performance.now();
+    state.elapsed += Math.round(now - clockFrom);
+    clockFrom = now;
+  }
+
+  /* The clock only runs while the board is on screen and has focus, and stops
+   * once the puzzle is solved. */
+  function syncClock() {
+    foldClock();
+    var watching = document.visibilityState === 'visible' && document.hasFocus();
+    if (!watching || solved) {
+      clockFrom = null;
+    } else if (clockFrom === null) {
+      clockFrom = performance.now();
+    }
+  }
+
+  function overlay(emoji, title, text, button) {
+    document.getElementById('ov-emoji').textContent = emoji;
+    document.getElementById('ov-title').textContent = title;
+    document.getElementById('ov-text').textContent = text;
+    dismissBtn.textContent = button;
+    overlayEl.hidden = false;
+    dismissBtn.focus();
+  }
+
+  function announceWin() {
+    save();
+    var name = puzzle.name.charAt(0).toUpperCase() + puzzle.name.slice(1);
+    var text = 'Time: ' + formatTime(state.elapsed);
+    if (state.hints.length) text += '\nHints: ' + state.hints.length;
+    overlay(puzzle.char, name, text, 'Back to the board');
+  }
+
+  function clueEl(clue, kind) {
+    var el = document.createElement('div');
+    el.className = 'clue ' + kind;
+    var numbers = clue;
+    if (clue.length === 0) numbers = [0];
+    numbers.forEach(function (v) {
+      var span = document.createElement('span');
+      span.textContent = String(v);
+      el.appendChild(span);
+    });
+    return el;
+  }
+
+  function buildGrid() {
+    var n = puzzle.size;
+    clues = cluesOf(n, puzzle.solution);
+    var longest = function (list) {
+      return Math.max.apply(null, list.map(function (c) { return Math.max(1, c.length); }));
+    };
+    var root = document.documentElement.style;
+    root.setProperty('--n', String(n));
+    root.setProperty('--rc', String(longest(clues.slice(0, n))));
+    root.setProperty('--cc', String(longest(clues.slice(n))));
+    boardEl.textContent = '';
+    boardEl.appendChild(document.createElement('div'));
+    clueEls = clues.map(function (clue, l) {
+      if (l < n) return clueEl(clue, 'row');
+      return clueEl(clue, 'col');
+    });
+    clueEls.slice(n).forEach(function (el) { boardEl.appendChild(el); });
+    cellEls = range(n * n).map(function (i) {
+      var r = Math.floor(i / n);
+      var c = i % n;
+      if (c === 0) boardEl.appendChild(clueEls[r]);
+      var el = document.createElement('div');
+      el.className = 'cell';
+      el.classList.toggle('l', c === 0);
+      el.classList.toggle('t', r === 0);
+      el.classList.toggle('r', c % 5 === 4);
+      el.classList.toggle('b', r % 5 === 4);
+      el.dataset.idx = String(i);
+      boardEl.appendChild(el);
+      return el;
+    });
+  }
+
+  function render() {
+    var n = puzzle.size;
+    cellEls.forEach(function (el, i) {
+      el.classList.toggle('fill', state.marks[i] === FILL);
+      el.classList.toggle('cross', state.marks[i] === CROSS);
+      el.classList.toggle('hint', hintCells.indexOf(i) >= 0);
+    });
+    var done = doneLines(n, clues, state.marks);
+    var lines = linesOf(n);
+    clueEls.forEach(function (el, l) {
+      var line = lines[l];
+      var isCurrent = current >= 0 && ((line.kind === 'row' && Math.floor(current / n) === line.k) || (line.kind === 'column' && current % n === line.k));
+      el.classList.toggle('cur', isCurrent);
+      el.classList.toggle('done', done.some(function (d) { return d.kind === line.kind && d.k === line.k; }));
+      el.classList.toggle('bad', badLines.some(function (b) { return b.kind === line.kind && b.k === line.k; }));
+    });
+    document.getElementById('undo').disabled = state.undo.length === 0;
+    var wasSolved = solved;
+    solved = isSolved(puzzle.solution, state.marks);
+    boardEl.classList.toggle('solved', solved);
+    syncClock();
+    if (solved && !wasSolved) announceWin();
+    if (solved) {
+      statusEl.textContent = 'Solved: ' + puzzle.char + ' ' + puzzle.name;
+      statusEl.className = 'status win';
+    } else if (statusEl.className === 'status win') {
+      statusEl.textContent = '';
+      statusEl.className = 'status';
+    }
+  }
+
+  function setStatus(text) {
+    statusEl.textContent = text;
+    statusEl.className = 'status';
+  }
+
+  /* Two deliberate lines: the verdict, then the reason under it. */
+  function setStatusWhy(text, why) {
+    setStatus(text);
+    var el = document.createElement('span');
+    el.className = 'why';
+    el.textContent = why;
+    statusEl.appendChild(el);
+  }
+
+  function pushUndo(cells) {
+    state.undo.push(cells);
+    if (state.undo.length > UNDO_LIMIT) state.undo.shift();
+  }
+
+  /* Every distinct hint shown counts once, so asking for the same one again
+   * is free. */
+  function countHint(key) {
+    if (state.hints.indexOf(key) >= 0) return;
+    state.hints.push(key);
+    save();
+    renderMeta();
+  }
+
+  function clearHint() {
+    hintCells = [];
+    badLines = [];
+  }
+
+  /* --- painting: press on a cell and drag along its row or column --- */
+
+  /* The stroke under way: the mark it paints, the mark it paints over, the
+   * cell it started on, and the cells it changed with what they held. */
+  var stroke = null;
+
+  function cellAt(x, y) {
+    var el = document.elementFromPoint(x, y);
+    if (!el || !el.classList.contains('cell')) return -1;
+    return Number(el.dataset.idx);
+  }
+
+  function paint(i) {
+    if (state.marks[i] !== stroke.over) return;
+    stroke.changes.push({ idx: i, mark: state.marks[i] });
+    state.marks[i] = stroke.mark;
+  }
+
+  /* Paints every cell from the start of the stroke to i, along the row or
+   * the column, whichever i is further along. */
+  function paintTo(i) {
+    var n = puzzle.size;
+    var r0 = Math.floor(stroke.from / n);
+    var c0 = stroke.from % n;
+    var r = Math.floor(i / n);
+    var c = i % n;
+    if (Math.abs(r - r0) > Math.abs(c - c0)) {
+      c = c0;
+    } else {
+      r = r0;
+    }
+    var steps = Math.max(Math.abs(r - r0), Math.abs(c - c0));
+    for (var s = 0; s <= steps; s++) {
+      var rr = r0 + Math.sign(r - r0) * s;
+      var cc = c0 + Math.sign(c - c0) * s;
+      paint(rr * n + cc);
+    }
+    current = r * n + c;
+  }
+
+  function startStroke(i, withMode) {
+    var over = state.marks[i];
+    var mark = withMode;
+    if (over === withMode) mark = UNKNOWN;
+    stroke = { mark: mark, over: over, from: i, changes: [] };
+    clearHint();
+    setStatus('');
+    paintTo(i);
+    render();
+  }
+
+  function endStroke() {
+    if (stroke === null) return;
+    if (stroke.changes.length) {
+      pushUndo(stroke.changes);
+      save();
+    }
+    stroke = null;
+    render();
+  }
+
+  function undo() {
+    var entry = state.undo.pop();
+    if (!entry) return;
+    entry.forEach(function (e) { state.marks[e.idx] = e.mark; });
+    clearHint();
+    setStatus('');
+    save();
+    render();
+  }
+
+  function restartPuzzle() {
+    var touched = range(puzzle.size * puzzle.size)
+      .filter(function (i) { return state.marks[i] !== UNKNOWN; })
+      .map(function (i) { return { idx: i, mark: state.marks[i] }; });
+    if (touched.length === 0) return;
+    if (!confirm('Restart this puzzle? Your marks will be cleared.')) return;
+    touched.forEach(function (t) { state.marks[t.idx] = UNKNOWN; });
+    pushUndo(touched);
+    clearHint();
+    setStatus('');
+    save();
+    render();
+  }
+
+  function wrongCells() {
+    return range(puzzle.size * puzzle.size).filter(function (i) {
+      if (state.marks[i] === FILL) return puzzle.solution[i] === 0;
+      if (state.marks[i] === CROSS) return puzzle.solution[i] === 1;
+      return false;
+    });
+  }
+
+  /* Shows the lines whose marks can not fit their clue. Anything else that
+   * is wrong it only mentions, without saying where: that takes a hint. */
+  function check() {
+    clearHint();
+    badLines = brokenLines(puzzle.size, clues, state.marks);
+    if (badLines.length) {
+      setStatus('The red clues can no longer fit.');
+    } else if (wrongCells().length) {
+      setStatus('Something on the board is wrong. Press Hint to see where.');
+    } else {
+      setStatus('No mistakes so far.');
+    }
+    render();
+  }
+
+  function hint() {
+    clearHint();
+    var wrong = wrongCells();
+    if (wrong.length) {
+      hintCells = wrong;
+      countHint('wrong:' + wrong.join(','));
+      if (wrong.length === 1) {
+        setStatus('This cell is wrong.');
+      } else {
+        setStatus('These cells are wrong.');
+      }
+      render();
+      return;
+    }
+    var step = nextStep(puzzle.size, clues, state.marks);
+    if (step === null) {
+      setStatus('Nothing left to work out.');
+      render();
+      return;
+    }
+    hintCells = step.cells;
+    countHint('line:' + step.line.kind + step.line.k + ':' + step.cells.join(','));
+    setStatusWhy('These cells can be worked out', 'from the clue of this ' + step.line.kind + ' alone');
+    render();
+  }
+
+  function startPuzzle(newPuzzle) {
+    puzzle = newPuzzle;
+    clockFrom = null;
+    solved = false;
+    current = -1;
+    state = freshState(puzzle);
+    clearHint();
+    buildGrid();
+    renderMeta();
+    save();
+    render();
+  }
+
+  /* Returns whether there was a puzzle to start. */
+  function startNext(size) {
+    var next = nextPuzzle(decks[size] || [], size, levelsFor, rand);
+    decks[size] = next.deck;
+    saveDecks();
+    if (next.puzzle === null) return false;
+    startPuzzle(next.puzzle);
+    return true;
+  }
+
+  function newPuzzle(size) {
+    setStatus('Generating...');
+    /* Let the status paint before the synchronous generator blocks. */
+    setTimeout(function () {
+      if (startNext(size)) {
+        setStatus('');
+      } else {
+        setStatus('No emoji on this device make a picture at this size.');
+      }
+    }, 20);
+  }
+
+  function hasProgress() {
+    return state.marks.some(function (m) { return m !== UNKNOWN; });
+  }
+
+  function renderMeta() {
+    var text = puzzle.size + '×' + puzzle.size;
+    var used = state.hints.length;
+    if (used === 1) {
+      text += ' · 1 hint';
+    } else if (used > 1) {
+      text += ' · ' + used + ' hints';
+    }
+    metaEl.textContent = text;
+  }
+
+  function setMode(m) {
+    mode = m;
+    document.getElementById('mode-fill').setAttribute('aria-pressed', String(m === FILL));
+    document.getElementById('mode-cross').setAttribute('aria-pressed', String(m === CROSS));
+  }
+
+  /* --- the New menu: pick a size, then start --- */
+
+  var choice = { size: 10 };
+
+  /* Only flips aria-pressed: rebuilding the chips would detach the one just
+   * tapped, and the outside-tap check would then close the menu under you. */
+  function renderMenu() {
+    menuEl.querySelectorAll('#menu-size .chip').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(Number(b.dataset.size) === choice.size));
+    });
+  }
+
+  function openMenu() {
+    choice = { size: puzzle.size };
+    renderMenu();
+    menuEl.hidden = false;
+    newBtn.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeMenu() {
+    menuEl.hidden = true;
+    newBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  /* --- wiring --- */
+
+  SIZES.forEach(function (size) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip';
+    b.textContent = size + '×' + size;
+    b.dataset.size = String(size);
+    b.addEventListener('click', function () {
+      choice.size = size;
+      renderMenu();
+    });
+    document.getElementById('menu-size').appendChild(b);
+  });
+
+  boardEl.addEventListener('pointerdown', function (ev) {
+    var i = cellAt(ev.clientX, ev.clientY);
+    if (i < 0 || solved) return;
+    ev.preventDefault();
+    boardEl.setPointerCapture(ev.pointerId);
+    /* The right mouse button always crosses off. */
+    if (ev.button === 2) {
+      startStroke(i, CROSS);
+    } else {
+      startStroke(i, mode);
+    }
+  });
+  boardEl.addEventListener('pointermove', function (ev) {
+    if (stroke === null) return;
+    var i = cellAt(ev.clientX, ev.clientY);
+    if (i < 0) return;
+    paintTo(i);
+    render();
+  });
+  boardEl.addEventListener('pointerup', endStroke);
+  boardEl.addEventListener('pointercancel', endStroke);
+  boardEl.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
+
+  document.getElementById('mode-fill').addEventListener('click', function () { setMode(FILL); });
+  document.getElementById('mode-cross').addEventListener('click', function () { setMode(CROSS); });
+  dismissBtn.addEventListener('click', function () { overlayEl.hidden = true; });
+  document.getElementById('undo').addEventListener('click', undo);
+  document.getElementById('restart').addEventListener('click', restartPuzzle);
+  document.getElementById('check').addEventListener('click', check);
+  document.getElementById('hintbtn').addEventListener('click', hint);
+  newBtn.addEventListener('click', function () {
+    if (menuEl.hidden) {
+      openMenu();
+    } else {
+      closeMenu();
+    }
+  });
+  document.getElementById('menu-cancel').addEventListener('click', closeMenu);
+  document.getElementById('menu-start').addEventListener('click', function () {
+    closeMenu();
+    if (hasProgress() && !solved && !confirm('Start a new puzzle? This one will be lost.')) return;
+    newPuzzle(choice.size);
+  });
+  /* A tap anywhere outside the menu puts it away, as a popup should. */
+  document.addEventListener('click', function (ev) {
+    if (menuEl.hidden) return;
+    if (menuEl.contains(ev.target)) return;
+    if (newBtn.contains(ev.target)) return;
+    closeMenu();
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    syncClock();
+    save();
+  });
+  window.addEventListener('focus', syncClock);
+  window.addEventListener('blur', syncClock);
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    /* While the menu is open, keys belong to it and not to the board. */
+    if (!menuEl.hidden) {
+      if (ev.key === 'Escape') closeMenu();
+      return;
+    }
+    if (ev.key === 'u') undo();
+    if (ev.key === 'h') hint();
+    if (ev.key === 'c') check();
+    if (ev.key === 'x' && mode === FILL) {
+      setMode(CROSS);
+    } else if (ev.key === 'x') {
+      setMode(FILL);
+    }
+  });
+
+  var restored = load();
+  if (restored) {
+    puzzle = restored.puzzle;
+    state = restored.state;
+    /* A solved puzzle comes back solved, without announcing it again. */
+    solved = isSolved(puzzle.solution, state.marks);
+    buildGrid();
+    renderMeta();
+    render();
+  } else if (!startNext(10)) {
+    setStatus('No emoji on this device make a picture.');
+    return;
+  }
+  overlay('', 'Nonogram', 'The numbers by each row and column are the runs of filled cells in it, in order, with gaps between. Fill in the cells to reveal an emoji. Tap or drag to fill; switch to ✕ to mark cells you know stay empty.', 'Play');
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('../sw.js').catch(function () {
+        /* file:// or no HTTPS: the app runs fine, it just is not installable. */
+      });
+    });
+  }
+}
+
+if (typeof document !== 'undefined') init();
+</script>
+</body>
+</html>

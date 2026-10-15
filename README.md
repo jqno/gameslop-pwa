@@ -13,5 +13,6 @@ Gameslop is a progressive web app full of small games:
 - Star Battle
 - Space Invaders
 - Flappy (a clone of Flappy Bird)
+- Nonogram (a.k.a. Picross), with pictures made from emoji
 
 I totally vibecoded this. I'm sorry...

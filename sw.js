@@ -15,6 +15,7 @@ const FILES = [
   'stars/', 'stars/index.html', 'stars/icon-192.png', 'stars/icon-512.png',
   'invaders/', 'invaders/index.html', 'invaders/icon-192.png', 'invaders/icon-512.png',
   'flappy/', 'flappy/index.html', 'flappy/icon-192.png', 'flappy/icon-512.png',
+  'nonogram/', 'nonogram/index.html', 'nonogram/icon-192.png', 'nonogram/icon-512.png',
 ];
 
 self.addEventListener('install', (event) => {

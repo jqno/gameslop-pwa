@@ -8,7 +8,8 @@
  * the paddle for Breakout, a patch of 2 and 4 tiles for 2048, and a small
  * board of regions with a star in each for Star Battle, and an invader with
  * the cannon's shot on its way up to it for Space Invaders, and a bird
- * heading for the gap between two pipes for Flappy.
+ * heading for the gap between two pipes for Flappy, and a solved heart with
+ * its clues for Nonogram.
  * Each icon is a scene over the unit square, supersampled for smooth
  * edges. Everything sits inside the maskable safe zone (radius 0.4). */
 import { deflateSync } from 'node:zlib';
@@ -545,7 +546,35 @@ function flappy() {
   };
 }
 
-const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper], ['pipes/', pipes], ['takuzu/', takuzu], ['breakout/', breakout], ['2048/', twentyFortyEight], ['stars/', starBattle], ['invaders/', invaders], ['flappy/', flappy]];
+/* --- nonogram: a solved 5x5 heart, a dot for each run in its clues ---- */
+
+function nonogram() {
+  const cell = 0.085;
+  const left = 0.33;
+  const top = 0.33;
+  const half = cell * 0.4;
+  const heart = ['.#.#.', '#####', '#####', '.###.', '..#..'];
+  /* How many runs each row and column has, drawn as dots beside it. */
+  const rowRuns = [2, 1, 1, 1, 1];
+  const colRuns = [1, 1, 1, 1, 1];
+  const dot = cell * 0.17;
+  return (x, y) => {
+    const r = Math.floor((y - top) / cell);
+    const c = Math.floor((x - left) / cell);
+    const lx = x - left - (c + 0.5) * cell;
+    const ly = y - top - (r + 0.5) * cell;
+    if (r >= 0 && c >= 0 && r < 5 && c < 5) {
+      if (!inRoundedBox(lx, ly, half, half, half * 0.3)) return BG;
+      if (heart[r][c] === '#') return ORANGE;
+      return mix(BG, PAPER, 0.08);
+    }
+    if (r >= 0 && r < 5 && c < 0 && -c <= rowRuns[r] && Math.hypot(lx, ly) <= dot) return BLUE;
+    if (c >= 0 && c < 5 && r < 0 && -r <= colRuns[c] && Math.hypot(lx, ly) <= dot) return BLUE;
+    return BG;
+  };
+}
+
+const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper], ['pipes/', pipes], ['takuzu/', takuzu], ['breakout/', breakout], ['2048/', twentyFortyEight], ['stars/', starBattle], ['invaders/', invaders], ['flappy/', flappy], ['nonogram/', nonogram]];
 for (const [dir, scene] of ICONS) {
   for (const size of [192, 512]) {
     const name = `${dir}icon-${size}.png`;

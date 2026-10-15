@@ -13,6 +13,7 @@ test:
     node tools/test-stars.mjs
     node tools/test-invaders.mjs
     node tools/test-flappy.mjs
+    node tools/test-nonogram.mjs
 
 # Serve the app so the service worker and manifest work
 serve port="8000":
