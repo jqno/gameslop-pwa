@@ -1,0 +1,874 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FreeCell</title>
+<meta name="description" content="Move every card to the foundations, using four free cells to get them there.">
+<meta name="theme-color" content="#0f1420">
+<link rel="manifest" href="../manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gameslop">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root {
+  color-scheme: light dark;
+  --width: min(100%, 640px);
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --ink: #1b2130;
+  --muted: #6b7382;
+  --btn: #ffffff;
+  --btnline: #ccd2dd;
+  --sel: #cfe0ff;
+  --accent: #2358c8;
+  --slot: #d6dbe5;
+  --face: #ffffff;
+  --edge: #c9cfdb;
+  --black: #1b2130;
+  --red: #d0343f;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1420;
+    --panel: #161c2b;
+    --ink: #e7ebf3;
+    --muted: #8b95a8;
+    --btn: #1c2334;
+    --btnline: #313a50;
+    --sel: #2b456f;
+    --accent: #79a8ff;
+    --slot: #2b3346;
+    --face: #e9edf4;
+    --edge: #0f1420;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+header {
+  width: var(--width);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+h1 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 20px; margin: 0; letter-spacing: .06em; text-transform: uppercase; }
+.meta { font-size: 14px; line-height: 1.25; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; white-space: pre; }
+a.key, button.key {
+  font: inherit;
+  background: var(--btn);
+  color: var(--ink);
+  border: 1px solid var(--btnline);
+  border-radius: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+a.key { display: flex; align-items: center; justify-content: center; padding: 0 14px; font-size: 22px; text-decoration: none; }
+button.key { padding: 10px 26px; font-size: 16px; font-weight: 600; }
+header button.key { padding: 10px 14px; }
+header button.icon { font-size: 22px; font-weight: 400; line-height: 1; }
+button.key.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.key:active { background: var(--sel); }
+button.key:disabled { opacity: .4; cursor: default; }
+/* The board takes whatever room is left. Cards and slots are positioned in
+ * px from the board's size; --w and --h are a card's size. */
+.board {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: var(--width);
+  touch-action: none;
+}
+.slot, .card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--w);
+  height: var(--h);
+  border-radius: calc(var(--w) * .12);
+}
+.slot {
+  border: 2px solid var(--slot);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--slot);
+  font-size: calc(var(--w) * .6);
+}
+.card {
+  background: var(--face);
+  border: 1px solid var(--edge);
+  color: var(--black);
+  font-size: calc(var(--w) * .28);
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform .18s ease;
+}
+.card.red { color: var(--red); }
+/* Rank and suit in opposite corners, so they line up down a cascade
+ * whatever the rank's width. */
+.card span { position: absolute; left: 7%; top: 6%; letter-spacing: -.05em; }
+.card span.ten { letter-spacing: -.12em; }
+.card i { position: absolute; right: 7%; top: 6%; font-style: normal; font-weight: 400; }
+.card b { position: absolute; left: 0; right: 0; bottom: 10%; text-align: center; font-size: calc(var(--w) * .6); font-weight: 400; }
+.card b.face { bottom: 17%; font-size: calc(var(--w) * .5); }
+.card.drag { transition: none; z-index: 300 !important; }
+.still .card { transition: none; }
+.card.shake { animation: shake .3s; }
+@keyframes shake {
+  25% { translate: -4px 0; }
+  75% { translate: 4px 0; }
+}
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+  background: rgba(8, 12, 22, .45);
+}
+.overlay[hidden] { display: none; }
+.overlay > div {
+  width: min(100%, 340px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 26px 20px;
+  text-align: center;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 18px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .35);
+  animation: pop .3s ease-out;
+}
+.overlay strong { font-size: 28px; line-height: 1.1; color: var(--accent); }
+.overlay p { margin: 0; color: var(--muted); }
+.overlay p#ov-stats { color: var(--ink); font-weight: 600; }
+#ov-buttons { display: flex; flex-direction: column; gap: 12px; }
+@keyframes pop {
+  from { opacity: 0; transform: scale(.85); }
+  to { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <a class="key" href="../" aria-label="Main menu">←</a>
+  <h1>FreeCell</h1>
+  <span class="meta" id="meta"></span>
+  <button class="key icon" id="undo" type="button" aria-label="Undo">↶</button>
+  <button class="key" id="new" type="button">New</button>
+</header>
+<div class="board" id="board"></div>
+<div class="overlay" id="overlay" hidden>
+  <div>
+    <strong id="ov-title"></strong>
+    <p id="ov-text"></p>
+    <p id="ov-stats"></p>
+    <div id="ov-buttons"></div>
+  </div>
+</div>
+<script id="app">
+'use strict';
+
+/* ------------------------------------------------------------------ *
+ * Rules
+ * ------------------------------------------------------------------ */
+
+/* A card is a number 0..51: rank * 4 + suit, with ranks from ace (0) to king
+ * (12) and suits clubs, diamonds, hearts, spades. That is the order the
+ * Microsoft deals use, so deal numbers match theirs. */
+var SUITS = ['♣︎', '♦︎', '♥︎', '♠︎'];
+var RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+var DEALS = 32000;
+/* The one Microsoft deal in 1..32000 that cannot be solved. */
+var UNSOLVABLE = 11982;
+/* Piles are numbered: the eight cascades, then the four free cells, then the
+ * four foundations, one per suit. */
+var CASCADES = 8;
+var CELLS = 4;
+var CELL = CASCADES;
+var HOME = CASCADES + CELLS;
+var STORAGE_KEY = 'freecell.v1';
+
+function rankOf(card) {
+  return Math.floor(card / 4) + 1;
+}
+
+function suitOf(card) {
+  return card % 4;
+}
+
+function isRed(card) {
+  return suitOf(card) === 1 || suitOf(card) === 2;
+}
+
+/* Whether card can go on top of onto in a cascade. */
+function fits(card, onto) {
+  return rankOf(onto) === rankOf(card) + 1 && isRed(onto) !== isRed(card);
+}
+
+function isRun(cards) {
+  return cards.every(function (card, k) { return k === 0 || fits(card, cards[k - 1]); });
+}
+
+/* The Microsoft deal with this number: their random generator picks a card,
+ * which swaps places with the last one left, and goes to the cascades in turn. */
+function deal(number) {
+  var seed = number;
+  var deck = [];
+  for (var card = 0; card < 52; card++) deck.push(card);
+  var cascades = [];
+  for (var c = 0; c < CASCADES; c++) cascades.push([]);
+  for (var i = 0; i < 52; i++) {
+    seed = (seed * 214013 + 2531011) % 2147483648;
+    var left = 52 - i;
+    var pick = Math.floor(seed / 65536) % left;
+    cascades[i % CASCADES].push(deck[pick]);
+    deck[pick] = deck[left - 1];
+  }
+  return { cascades: cascades, cells: [null, null, null, null], home: [0, 0, 0, 0] };
+}
+
+function randomDeal(rand) {
+  var number = 1 + Math.floor(rand() * (DEALS - 1));
+  if (number >= UNSOLVABLE) number += 1;
+  return number;
+}
+
+/* The cards on a pile, from the bottom up. A foundation is never a source. */
+function cardsOf(state, pile) {
+  if (pile < CELL) return state.cascades[pile];
+  if (pile < HOME) {
+    var card = state.cells[pile - CELL];
+    if (card === null) return [];
+    return [card];
+  }
+  return [];
+}
+
+/* How many cards can move together to cascade to, one by one through the
+ * empty free cells and cascades. */
+function capacity(state, to) {
+  var free = state.cells.filter(function (card) { return card === null; }).length;
+  var empty = state.cascades.filter(function (cards) { return cards.length === 0; }).length;
+  if (state.cascades[to].length === 0) empty -= 1;
+  return (free + 1) * Math.pow(2, empty);
+}
+
+/* Whether the top count cards of pile from can move to pile to. */
+function canMove(state, from, to, count) {
+  if (from === to || from >= HOME) return false;
+  var source = cardsOf(state, from);
+  if (count < 1 || count > source.length) return false;
+  var moving = source.slice(source.length - count);
+  if (!isRun(moving)) return false;
+  var card = moving[0];
+  if (to >= HOME) {
+    return count === 1 && to === HOME + suitOf(card) && state.home[suitOf(card)] === rankOf(card) - 1;
+  }
+  if (to >= CELL) return count === 1 && state.cells[to - CELL] === null;
+  var target = state.cascades[to];
+  if (target.length > 0 && !fits(card, target[target.length - 1])) return false;
+  return count <= capacity(state, to);
+}
+
+/* The state after a legal move; the old one is left alone. */
+function move(state, from, to, count) {
+  var next = {
+    cascades: state.cascades.map(function (cards) { return cards.slice(); }),
+    cells: state.cells.slice(),
+    home: state.home.slice()
+  };
+  var moving;
+  if (from < CELL) {
+    moving = next.cascades[from].splice(next.cascades[from].length - count, count);
+  } else {
+    moving = [next.cells[from - CELL]];
+    next.cells[from - CELL] = null;
+  }
+  if (to < CELL) {
+    next.cascades[to] = next.cascades[to].concat(moving);
+  } else if (to < HOME) {
+    next.cells[to - CELL] = moving[0];
+  } else {
+    next.home[to - HOME] = rankOf(moving[0]);
+  }
+  return next;
+}
+
+/* Where a tap sends the top count cards of pile from: home if it can, then
+ * onto another card, then an empty cascade, then a free cell. -1 if nowhere. */
+function bestMove(state, from, count) {
+  var source = cardsOf(state, from);
+  var card = source[source.length - count];
+  var targets = [HOME + suitOf(card)];
+  var empty = [];
+  state.cascades.forEach(function (cards, c) {
+    if (cards.length > 0) {
+      targets.push(c);
+    } else if (from >= CELL || count < source.length) {
+      empty.push(c);
+    }
+  });
+  targets = targets.concat(empty);
+  if (from < CELL) {
+    for (var k = 0; k < CELLS; k++) targets.push(CELL + k);
+  }
+  var found = targets.filter(function (to) { return canMove(state, from, to, count); });
+  if (found.length === 0) return -1;
+  return found[0];
+}
+
+/* Whether no card could still be needed to put another one on: both of the
+ * other colour one rank lower are already home. */
+function isSafe(state, card) {
+  var rank = rankOf(card);
+  if (rank <= 2) return true;
+  var others = [0, 3];
+  if (!isRed(card)) others = [1, 2];
+  return others.every(function (suit) { return state.home[suit] >= rank - 1; });
+}
+
+/* A card that can go home, as { from, to }, or null; only a safe one if
+ * safeOnly. */
+function homeMove(state, safeOnly) {
+  var piles = [];
+  for (var pile = 0; pile < HOME; pile++) piles.push(pile);
+  var from = piles.find(function (p) {
+    var cards = cardsOf(state, p);
+    if (cards.length === 0) return false;
+    var card = cards[cards.length - 1];
+    if (safeOnly && !isSafe(state, card)) return false;
+    return canMove(state, p, HOME + suitOf(card), 1);
+  });
+  if (from === undefined) return null;
+  var source = cardsOf(state, from);
+  return { from: from, to: HOME + suitOf(source[source.length - 1]) };
+}
+
+function isWon(state) {
+  return state.home.every(function (rank) { return rank === 13; });
+}
+
+/* Whether every card can go home from here without any other move. */
+function canFinish(state) {
+  var next = state;
+  var step = homeMove(next, false);
+  while (step !== null) {
+    next = move(next, step.from, step.to, 1);
+    step = homeMove(next, false);
+  }
+  return isWon(next);
+}
+
+function rng(seed) {
+  var a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    var t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function isCard(value) {
+  return Number.isInteger(value) && value >= 0 && value < 52;
+}
+
+/* Whether state holds every card exactly once. */
+function isState(state) {
+  if (!state || !Array.isArray(state.cascades) || state.cascades.length !== CASCADES) return false;
+  if (!Array.isArray(state.cells) || state.cells.length !== CELLS) return false;
+  if (!Array.isArray(state.home) || state.home.length !== 4) return false;
+  if (!state.cascades.every(function (cards) { return Array.isArray(cards) && cards.every(isCard); })) return false;
+  if (!state.cells.every(function (card) { return card === null || isCard(card); })) return false;
+  if (!state.home.every(function (rank) { return Number.isInteger(rank) && rank >= 0 && rank <= 13; })) return false;
+  var cards = state.cascades.flat().concat(state.cells.filter(isCard));
+  state.home.forEach(function (rank, suit) {
+    for (var r = 0; r < rank; r++) cards.push(r * 4 + suit);
+  });
+  if (cards.length !== 52) return false;
+  return new Set(cards).size === 52;
+}
+
+/* progress holds the stats and the game under way, if any: its deal number,
+ * where the cards are, the states before each move for undo, and whether it
+ * has counted as played yet. */
+function serialize(progress) {
+  return JSON.stringify({ version: 1, played: progress.played, won: progress.won, game: progress.game });
+}
+
+function deserialize(text) {
+  var data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+  if (!data || data.version !== 1) return null;
+  if (!Number.isInteger(data.played) || !Number.isInteger(data.won) || data.won < 0 || data.played < data.won) return null;
+  var game = data.game;
+  if (game === null) return { played: data.played, won: data.won, game: null };
+  if (!game || !Number.isInteger(game.number) || game.number < 1 || game.number > DEALS) return null;
+  if (!isState(game.state) || !Array.isArray(game.history) || !game.history.every(isState)) return null;
+  if (typeof game.started !== 'boolean') return null;
+  return {
+    played: data.played,
+    won: data.won,
+    game: { number: game.number, state: game.state, history: game.history, started: game.started }
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * UI
+ * ------------------------------------------------------------------ */
+
+function init() {
+  var boardEl = document.getElementById('board');
+  var overlayEl = document.getElementById('overlay');
+  var titleEl = document.getElementById('ov-title');
+  var textEl = document.getElementById('ov-text');
+  var statsEl = document.getElementById('ov-stats');
+  var buttonsEl = document.getElementById('ov-buttons');
+  var metaEl = document.getElementById('meta');
+  var undoBtn = document.getElementById('undo');
+  var newBtn = document.getElementById('new');
+
+  /* The pause between cards going home on their own. */
+  var STEP_MS = 110;
+  /* A press becomes a drag once it has gone this far, in px. */
+  var DRAG = 8;
+  /* The foundations left to right, alternating colours. */
+  var HOME_ORDER = [3, 2, 0, 1];
+  /* What the middle of a card shows, by suit: the aces show the old Latin
+   * suits each one comes from (batons, coins, cups, swords), and the court
+   * cards a person in the suit's skin tone. */
+  var ACES = ['🪄', '🪙', '🏆', '🗡\uFE0F'];
+  var TONES = ['\u{1F3FE}', '\u{1F3FC}', '\u{1F3FB}', '\u{1F3FF}'];
+
+  var rand = rng(Math.floor(Math.random() * 4294967296));
+  var progress = load() || { played: 0, won: 0, game: null };
+  var cardEls = [];
+  var slotEls = [];
+  /* Card and board sizes in px, from layout(). */
+  var dims = null;
+  /* Where render() last put each card, as { x, y, z }. */
+  var positions = [];
+  var raiseTimer = null;
+  /* Whether the player can move; not while the popup is up. */
+  var playing = false;
+  /* Whether cards are going home on their own. */
+  var busy = false;
+  var press = null;
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, serialize(progress));
+    } catch (e) {
+      /* private mode / quota: the game still works, it just forgets. */
+    }
+  }
+
+  function load() {
+    try {
+      return deserialize(localStorage.getItem(STORAGE_KEY));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function wait(ms) {
+    return new Promise(function (done) { setTimeout(done, ms); });
+  }
+
+  function build() {
+    for (var pile = 0; pile < HOME + 4; pile++) {
+      var slot = document.createElement('div');
+      slot.className = 'slot';
+      if (pile >= HOME) slot.textContent = SUITS[pile - HOME];
+      boardEl.appendChild(slot);
+      slotEls.push(slot);
+    }
+    for (var card = 0; card < 52; card++) {
+      var el = document.createElement('div');
+      el.className = 'card';
+      if (isRed(card)) el.classList.add('red');
+      el.dataset.card = card;
+      var corner = document.createElement('span');
+      corner.textContent = RANKS[rankOf(card) - 1];
+      if (rankOf(card) === 10) corner.className = 'ten';
+      var suit = document.createElement('i');
+      suit.textContent = SUITS[suitOf(card)];
+      var middle = document.createElement('b');
+      middle.textContent = picture(card);
+      if (rankOf(card) === 1 || rankOf(card) > 10) middle.className = 'face';
+      el.appendChild(corner);
+      el.appendChild(suit);
+      el.appendChild(middle);
+      boardEl.appendChild(el);
+      cardEls.push(el);
+    }
+  }
+
+  function picture(card) {
+    var suit = suitOf(card);
+    var rank = rankOf(card);
+    if (rank === 1) return ACES[suit];
+    if (rank === 11) return '🧑' + TONES[suit] + '\u200D🌾';
+    if (rank === 12) return '👸' + TONES[suit];
+    if (rank === 13) return '🤴' + TONES[suit];
+    return SUITS[suit];
+  }
+
+  function column(pile) {
+    if (pile < CELL) return pile;
+    if (pile < HOME) return pile - CELL;
+    return CELLS + HOME_ORDER.indexOf(pile - HOME);
+  }
+
+  function layout() {
+    var width = boardEl.clientWidth;
+    var col = width / CASCADES;
+    var gap = Math.max(3, col * 0.08);
+    var w = col - gap;
+    var h = w * 1.4;
+    dims = { col: col, gap: gap, w: w, h: h, top: h + gap * 3, height: boardEl.clientHeight };
+    boardEl.style.setProperty('--w', w + 'px');
+    boardEl.style.setProperty('--h', h + 'px');
+    slotEls.forEach(function (slot, pile) {
+      var y = 0;
+      if (pile < CELL) y = dims.top;
+      slot.style.transform = 'translate(' + (column(pile) * col + gap / 2) + 'px, ' + y + 'px)';
+    });
+  }
+
+  /* How far apart the cards of a cascade are, squeezed to fit the board. */
+  function fan(length) {
+    var step = dims.h * 0.3;
+    if (length <= 1) return step;
+    var room = (dims.height - dims.top - dims.h) / (length - 1);
+    return Math.max(dims.h * 0.12, Math.min(step, room));
+  }
+
+  function at(pile, depth, z) {
+    var y = 0;
+    if (pile < CELL) y = dims.top + depth * fan(progress.game.state.cascades[pile].length);
+    return { x: column(pile) * dims.col + dims.gap / 2, y: y, z: z };
+  }
+
+  function place(el, p) {
+    el.style.transform = 'translate(' + p.x + 'px, ' + p.y + 'px)';
+  }
+
+  /* Puts every card where the state says; cards that move go over the rest
+   * until they land. */
+  function render() {
+    var state = progress.game.state;
+    var next = [];
+    state.cascades.forEach(function (cards, pile) {
+      cards.forEach(function (card, k) { next[card] = at(pile, k, k + 1); });
+    });
+    state.cells.forEach(function (card, k) {
+      if (card !== null) next[card] = at(CELL + k, 0, 1);
+    });
+    state.home.forEach(function (rank, suit) {
+      for (var r = 0; r < rank; r++) next[r * 4 + suit] = at(HOME + suit, 0, r + 1);
+    });
+    cardEls.forEach(function (el, card) {
+      var p = next[card];
+      var old = positions[card];
+      el.classList.remove('drag');
+      place(el, p);
+      if (old && (old.x !== p.x || old.y !== p.y)) {
+        el.style.zIndex = 100 + p.z;
+      } else {
+        el.style.zIndex = p.z;
+      }
+    });
+    positions = next;
+    clearTimeout(raiseTimer);
+    raiseTimer = setTimeout(function () {
+      cardEls.forEach(function (el, card) { el.style.zIndex = positions[card].z; });
+    }, 250);
+    showMeta();
+  }
+
+  function showMeta() {
+    var game = progress.game;
+    var moves = game.history.length;
+    var word = ' moves';
+    if (moves === 1) word = ' move';
+    metaEl.textContent = '#' + game.number + '\n' + moves + word;
+    undoBtn.disabled = moves === 0;
+  }
+
+  /* The pile and position of a card that is not home. */
+  function find(card) {
+    var state = progress.game.state;
+    var cell = state.cells.indexOf(card);
+    if (cell >= 0) return { pile: CELL + cell, index: 0 };
+    var pile = state.cascades.findIndex(function (cards) { return cards.indexOf(card) >= 0; });
+    if (pile < 0) return null;
+    return { pile: pile, index: state.cascades[pile].indexOf(card) };
+  }
+
+  /* The pile under a point on the board. */
+  function pileAt(x, y, card) {
+    var col = Math.max(0, Math.min(CASCADES - 1, Math.floor(x / dims.col)));
+    if (y >= dims.top - dims.gap) return col;
+    if (col < CELLS) return CELL + col;
+    return HOME + suitOf(card);
+  }
+
+  async function play(from, to, count) {
+    var game = progress.game;
+    game.history.push(game.state);
+    game.state = move(game.state, from, to, count);
+    if (!game.started) {
+      game.started = true;
+      progress.played += 1;
+    }
+    render();
+    save();
+    await settle();
+  }
+
+  /* Sends cards home on their own: the safe ones, or all of them once
+   * nothing else stands in the way. */
+  async function settle() {
+    busy = true;
+    var game = progress.game;
+    var step = homeMove(game.state, true);
+    if (step === null && canFinish(game.state)) step = homeMove(game.state, false);
+    while (step !== null) {
+      await wait(STEP_MS);
+      game.state = move(game.state, step.from, step.to, 1);
+      render();
+      step = homeMove(game.state, true);
+      if (step === null && canFinish(game.state)) step = homeMove(game.state, false);
+    }
+    busy = false;
+    if (isWon(game.state)) {
+      progress.won += 1;
+      progress.game = null;
+      save();
+      await wait(300);
+      win(game);
+    } else {
+      save();
+    }
+  }
+
+  function shake(el) {
+    el.classList.remove('shake');
+    void el.offsetWidth;
+    el.classList.add('shake');
+  }
+
+  function tap(p, el) {
+    var to = bestMove(progress.game.state, p.pile, p.cards.length);
+    if (to < 0) {
+      shake(el);
+    } else {
+      play(p.pile, to, p.cards.length);
+    }
+  }
+
+  function drop(p, ev) {
+    var rect = boardEl.getBoundingClientRect();
+    var to = pileAt(ev.clientX - rect.left, ev.clientY - rect.top, p.cards[0]);
+    if (canMove(progress.game.state, p.pile, to, p.cards.length)) {
+      play(p.pile, to, p.cards.length);
+    } else {
+      render();
+    }
+  }
+
+  function startGame(number) {
+    progress.game = { number: number, state: deal(number), history: [], started: false };
+    save();
+    render();
+    resume();
+    settle();
+  }
+
+  function restart() {
+    var game = progress.game;
+    game.state = deal(game.number);
+    game.history = [];
+    save();
+    render();
+    resume();
+    settle();
+  }
+
+  function resume() {
+    overlayEl.hidden = true;
+    playing = true;
+  }
+
+  function win(game) {
+    playing = false;
+    var moves = game.history.length;
+    overlay('Solved!', 'You solved deal #' + game.number + ' in ' + moves + ' moves.', [
+      ['Next deal', function () { startGame(randomDeal(rand)); }]
+    ]);
+  }
+
+  function overlay(title, text, buttons) {
+    titleEl.textContent = title;
+    textEl.textContent = text;
+    buttonsEl.textContent = '';
+    buttons.forEach(function (button, k) {
+      var el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'key';
+      if (k === 0) el.classList.add('primary');
+      el.textContent = button[0];
+      el.addEventListener('click', button[1]);
+      buttonsEl.appendChild(el);
+    });
+    if (progress.played > 0) {
+      statsEl.textContent = 'Won ' + progress.won + ' of ' + progress.played + ' games';
+    } else {
+      statsEl.textContent = '';
+    }
+    overlayEl.hidden = false;
+    buttonsEl.firstChild.focus();
+  }
+
+  undoBtn.addEventListener('click', function () {
+    var game = progress.game;
+    if (!playing || busy || game.history.length === 0) return;
+    game.state = game.history.pop();
+    save();
+    render();
+  });
+
+  newBtn.addEventListener('click', function () {
+    if (!playing || busy) return;
+    playing = false;
+    overlay('New game?', 'Deal #' + progress.game.number + ' will be lost.', [
+      ['New deal', function () { startGame(randomDeal(rand)); }],
+      ['Restart this deal', restart],
+      ['Keep playing', resume]
+    ]);
+  });
+
+  /* Drag a card, and the run on top of it, to where it should go; or tap it
+   * to send it to the best place. */
+  boardEl.addEventListener('pointerdown', function (ev) {
+    var el = ev.target.closest('.card');
+    if (!playing || busy || el === null) return;
+    var where = find(Number(el.dataset.card));
+    if (where === null) return;
+    var cards = cardsOf(progress.game.state, where.pile).slice(where.index);
+    press = { pile: where.pile, cards: cards, el: el, x: ev.clientX, y: ev.clientY, dragging: false };
+    boardEl.setPointerCapture(ev.pointerId);
+  });
+
+  boardEl.addEventListener('pointermove', function (ev) {
+    if (press === null) return;
+    var dx = ev.clientX - press.x;
+    var dy = ev.clientY - press.y;
+    if (!press.dragging) {
+      if (Math.hypot(dx, dy) < DRAG) return;
+      if (!isRun(press.cards)) {
+        shake(press.el);
+        press = null;
+        return;
+      }
+      press.dragging = true;
+    }
+    press.cards.forEach(function (card) {
+      var p = positions[card];
+      cardEls[card].classList.add('drag');
+      place(cardEls[card], { x: p.x + dx, y: p.y + dy });
+    });
+  });
+
+  boardEl.addEventListener('pointerup', function (ev) {
+    if (press === null) return;
+    var p = press;
+    press = null;
+    if (p.dragging) {
+      drop(p, ev);
+    } else {
+      tap(p, p.el);
+    }
+  });
+
+  boardEl.addEventListener('pointercancel', function () {
+    if (press === null) return;
+    press = null;
+    render();
+  });
+
+  document.addEventListener('keydown', function (ev) {
+    if ((ev.ctrlKey || ev.metaKey) && ev.key === 'z') {
+      ev.preventDefault();
+      undoBtn.click();
+    }
+  });
+
+  window.addEventListener('resize', function () {
+    layout();
+    render();
+  });
+
+  /* Cards start out where they belong, rather than sliding in. */
+  boardEl.classList.add('still');
+  build();
+  layout();
+  if (progress.game !== null) {
+    render();
+    resume();
+  } else {
+    progress.game = { number: randomDeal(rand), state: null, history: [], started: false };
+    progress.game.state = deal(progress.game.number);
+    render();
+    overlay('FreeCell', 'Get every card onto the four foundations at the top, by suit from ace to king. Stack cards in the columns going down and alternating colours, and park any card in a free cell. Drag a card, or tap it to send it to the best place.', [
+      ['Play', function () { startGame(progress.game.number); }]
+    ]);
+  }
+  void boardEl.offsetWidth;
+  boardEl.classList.remove('still');
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('../sw.js').catch(function () {
+        /* file:// or no HTTPS: the app runs fine, it just is not installable. */
+      });
+    });
+  }
+}
+
+if (typeof document !== 'undefined') init();
+</script>
+</body>
+</html>

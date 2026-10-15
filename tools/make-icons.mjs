@@ -9,7 +9,8 @@
  * board of regions with a star in each for Star Battle, and an invader with
  * the cannon's shot on its way up to it for Space Invaders, and a bird
  * heading for the gap between two pipes for Flappy, and a solved heart with
- * its clues for Nonogram.
+ * its clues for Nonogram, and a cascade of three cards ending in a heart for
+ * FreeCell.
  * Each icon is a scene over the unit square, supersampled for smooth
  * edges. Everything sits inside the maskable safe zone (radius 0.4). */
 import { deflateSync } from 'node:zlib';
@@ -574,7 +575,49 @@ function nonogram() {
   };
 }
 
-const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper], ['pipes/', pipes], ['takuzu/', takuzu], ['breakout/', breakout], ['2048/', twentyFortyEight], ['stars/', starBattle], ['invaders/', invaders], ['flappy/', flappy], ['nonogram/', nonogram]];
+/* --- freecell: a cascade of three cards, a spade, a diamond, a heart ---- */
+
+/* Whether px, py is inside a heart of this size around 0, 0, point down;
+ * upside down, point up, when flip. */
+function inHeart(px, py, size, flip) {
+  const u = px / size;
+  let v = -py / size + 0.15;
+  if (flip) v = py / size + 0.15;
+  return (u * u + v * v - 1) ** 3 - u * u * v ** 3 <= 0;
+}
+
+function freecell() {
+  const RED = [224, 69, 79];
+  const w = 0.3;
+  const h = 0.42;
+  const left = 0.5 - w / 2;
+  const tops = [0.19, 0.29, 0.39];
+  const rim = 0.012;
+  const pip = 0.028;
+  /* For each card: its colour and a test for its suit, around 0, 0. */
+  const suits = [
+    [INK, (px, py, s) => inHeart(px, py + s * 0.25, s, true) || (Math.abs(px) <= s * 0.6 * (py / s - 0.2) && py <= s * 1.2)],
+    [RED, (px, py, s) => Math.abs(px) / 0.75 + Math.abs(py) <= s * 1.1],
+    [RED, (px, py, s) => inHeart(px, py, s, false)]
+  ];
+  return (x, y) => {
+    for (let k = tops.length - 1; k >= 0; k--) {
+      const top = tops[k];
+      const inside = inRoundedBox(x - 0.5, y - top - h / 2, w / 2, h / 2, 0.035);
+      if (!inside) {
+        if (k > 0 && inRoundedBox(x - 0.5, y - top - h / 2, w / 2 + rim, h / 2 + rim, 0.035 + rim)) return BG;
+        continue;
+      }
+      const [colour, inSuit] = suits[k];
+      if (inSuit(x - left - 0.05, y - top - 0.05, pip)) return colour;
+      if (k === tops.length - 1 && inSuit(x - 0.5, y - top - h * 0.58, 0.08)) return colour;
+      return PAPER;
+    }
+    return BG;
+  };
+}
+
+const ICONS = [['', launcher], ['suguru/', suguru], ['crowd/', crowd], ['gems/', gems], ['blocks/', blocks], ['bubbles/', bubbles], ['minesweeper/', minesweeper], ['pipes/', pipes], ['takuzu/', takuzu], ['breakout/', breakout], ['2048/', twentyFortyEight], ['stars/', starBattle], ['invaders/', invaders], ['flappy/', flappy], ['nonogram/', nonogram], ['freecell/', freecell]];
 for (const [dir, scene] of ICONS) {
   for (const size of [192, 512]) {
     const name = `${dir}icon-${size}.png`;
