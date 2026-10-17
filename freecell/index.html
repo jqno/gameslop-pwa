@@ -385,6 +385,54 @@ function canFinish(state) {
   return isWon(next);
 }
 
+/* Every legal move, as { from, to, count }. */
+function legalMoves(state) {
+  var found = [];
+  for (var from = 0; from < HOME; from++) {
+    var length = cardsOf(state, from).length;
+    for (var to = 0; to < HOME + 4; to++) {
+      for (var count = 1; count <= length; count++) {
+        if (canMove(state, from, to, count)) found.push({ from: from, to: to, count: count });
+      }
+    }
+  }
+  return found;
+}
+
+/* The same key for positions that differ only in which free cell or which
+ * cascade holds what. */
+function positionKey(state) {
+  var cascades = state.cascades.map(function (cards) { return cards.join(','); }).sort();
+  var cells = state.cells.filter(function (card) { return card !== null; }).sort();
+  return cascades.join('|') + '/' + cells.join(',');
+}
+
+/* How many positions outlook() looks at before it gives up. */
+var SEARCH_LIMIT = 3000;
+
+/* What is left: 'stuck' if no move is legal, 'loop' if moves are, but no
+ * position they lead to lets a card go home, and 'open' otherwise, or if
+ * there are too many positions to tell. */
+function outlook(state) {
+  if (legalMoves(state).length === 0) return 'stuck';
+  var seen = {};
+  seen[positionKey(state)] = true;
+  var queue = [state];
+  for (var k = 0; k < queue.length; k++) {
+    if (homeMove(queue[k], false) !== null) return 'open';
+    if (queue.length > SEARCH_LIMIT) return 'open';
+    legalMoves(queue[k]).forEach(function (m) {
+      var next = move(queue[k], m.from, m.to, m.count);
+      var key = positionKey(next);
+      if (!seen[key]) {
+        seen[key] = true;
+        queue.push(next);
+      }
+    });
+  }
+  return 'loop';
+}
+
 function rng(seed) {
   var a = seed >>> 0;
   return function () {
@@ -482,6 +530,8 @@ function init() {
   var playing = false;
   /* Whether cards are going home on their own. */
   var busy = false;
+  /* Whether the player was told this game only goes in circles now. */
+  var warned = false;
   var press = null;
 
   function save() {
@@ -676,6 +726,27 @@ function init() {
       win(game);
     } else {
       save();
+      checkOutlook(game);
+    }
+  }
+
+  function checkOutlook(game) {
+    var ahead = outlook(game.state);
+    if (ahead === 'stuck') {
+      playing = false;
+      overlay('No moves left', 'Deal #' + game.number + ' cannot go on from here.', [
+        ['Undo', function () { resume(); undo(); }],
+        ['Restart this deal', restart],
+        ['New deal', function () { startGame(randomDeal(rand)); }]
+      ]);
+    } else if (ahead === 'loop' && !warned) {
+      warned = true;
+      playing = false;
+      overlay('Going in circles', 'Cards can still move about, but none of them can reach a foundation any more.', [
+        ['Keep playing', resume],
+        ['Undo', function () { resume(); undo(); }],
+        ['New deal', function () { startGame(randomDeal(rand)); }]
+      ]);
     }
   }
 
@@ -706,6 +777,7 @@ function init() {
 
   function startGame(number) {
     progress.game = { number: number, state: deal(number), history: [] };
+    warned = false;
     save();
     render();
     resume();
@@ -716,6 +788,7 @@ function init() {
     var game = progress.game;
     game.state = deal(game.number);
     game.history = [];
+    warned = false;
     save();
     render();
     resume();
@@ -759,13 +832,16 @@ function init() {
     buttonsEl.firstChild.focus();
   }
 
-  undoBtn.addEventListener('click', function () {
+  function undo() {
     var game = progress.game;
     if (!playing || busy || game.history.length === 0) return;
     game.state = game.history.pop();
+    warned = false;
     save();
     render();
-  });
+  }
+
+  undoBtn.addEventListener('click', undo);
 
   newBtn.addEventListener('click', function () {
     if (!playing || busy) return;

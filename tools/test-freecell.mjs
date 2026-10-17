@@ -152,6 +152,14 @@ test('a game finishes once every card can go home', () => {
   assert(G.isWon({ cascades: [[], [], [], [], [], [], [], []], cells: [null, null, null, null], home: [13, 13, 13, 13] }), 'won');
 });
 
+test('a game is stuck with no legal move, and loops when moves lead nowhere', () => {
+  const full = ['2S 9S', '2C 9C', '2H 9H', '2D 9D', '3S KS', '3C KC', '3H KH', '3D KD'];
+  eq(G.outlook(state(full, ['JS', 'JC', 'JH', 'JD'])), 'stuck', 'cells full');
+  eq(G.outlook(state(full, ['JS', 'JC', 'JH'])), 'loop', 'one cell to shuffle through');
+  eq(G.outlook(state(full, ['JS', 'JC', 'JH'], [1, 1, 1, 1])), 'open', 'a two can go home after a shuffle');
+  eq(G.outlook(G.deal(1)), 'open', 'a fresh deal');
+});
+
 test('random play keeps every card in the game', () => {
   seeds.forEach((seed) => {
     const rand = G.rng(seed);

@@ -9,6 +9,7 @@ if (!match) throw new Error('could not find <script id="app"> in index.html');
 const EXPORTS = [
   'SUITS', 'RANKS', 'DEALS', 'UNSOLVABLE', 'CELL', 'HOME', 'rankOf', 'suitOf', 'isRed', 'fits', 'isRun',
   'deal', 'randomDeal', 'cardsOf', 'capacity', 'canMove', 'move', 'bestMove', 'isSafe', 'homeMove', 'isWon', 'canFinish',
+  'legalMoves', 'outlook',
   'rng', 'isState', 'serialize', 'deserialize'
 ];
 
