@@ -1,5 +1,5 @@
 /* Cache-first over the whole app, every game included; bump CACHE to ship an update. */
-const CACHE = 'gameslop-v18';
+const CACHE = 'gameslop-v19';
 const FILES = [
   '.', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png',
   'suguru/', 'suguru/index.html', 'suguru/icon-192.png', 'suguru/icon-512.png',
@@ -30,6 +30,12 @@ self.addEventListener('activate', (event) => {
       .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data === 'version') {
+    event.source.postMessage(CACHE);
+  }
 });
 
 self.addEventListener('fetch', (event) => {
