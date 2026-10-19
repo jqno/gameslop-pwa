@@ -320,6 +320,43 @@ function move(state, from, to, count) {
   return next;
 }
 
+/* The one-card moves, as [{ from, to }], that a legal move of the top count
+ * cards of from to to stands for: parked in the free cells, and when those
+ * run out, in empty cascades. */
+function steps(state, from, to, count) {
+  var found = [];
+  var current = state;
+  function step(a, b) {
+    found.push({ from: a, to: b });
+    current = move(current, a, b, 1);
+  }
+  function shift(n, a, b, spare) {
+    var free = [];
+    current.cells.forEach(function (card, k) {
+      if (card === null) free.push(CELL + k);
+    });
+    if (n <= free.length + 1) {
+      var parked = free.slice(0, n - 1);
+      parked.forEach(function (cell) { step(a, cell); });
+      step(a, b);
+      parked.reverse().forEach(function (cell) { step(cell, b); });
+      return;
+    }
+    var via = spare[0];
+    var rest = spare.slice(1);
+    var half = Math.min(n - 1, (free.length + 1) * Math.pow(2, rest.length));
+    shift(half, a, via, rest);
+    shift(n - half, a, b, rest);
+    shift(half, via, b, rest);
+  }
+  var spare = [];
+  state.cascades.forEach(function (cards, c) {
+    if (cards.length === 0 && c !== to) spare.push(c);
+  });
+  shift(count, from, to, spare);
+  return found;
+}
+
 /* Where a tap sends the top count cards of pile from: home if it can, then
  * onto another card, then an empty cascade, then a free cell. -1 if nowhere. */
 function bestMove(state, from, count) {
@@ -694,11 +731,17 @@ function init() {
     return HOME + suitOf(card);
   }
 
+  /* Moves the cards one at a time, the way they would really go. */
   async function play(from, to, count) {
+    busy = true;
     var game = progress.game;
     game.history.push(game.state);
-    game.state = move(game.state, from, to, count);
-    render();
+    var list = steps(game.state, from, to, count);
+    for (var k = 0; k < list.length; k++) {
+      if (k > 0) await wait(STEP_MS);
+      game.state = move(game.state, list[k].from, list[k].to, 1);
+      render();
+    }
     save();
     await settle();
   }

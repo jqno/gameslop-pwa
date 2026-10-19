@@ -123,6 +123,19 @@ test('runs move as far as the free cells and empty cascades allow', () => {
   assert(!G.canMove(state(['TS 9H 9C']), 0, 1, 3), 'must be a run');
 });
 
+test('a run moves one card at a time, through the free cells and empty cascades', () => {
+  const s = state(['TS 9H 8C 7D', 'JD', '', 'KD', 'QS', 'QH', 'QC', 'QD'], ['AC', 'AD', 'AH']);
+  const list = G.steps(s, 0, 1, 4);
+  eq(list.length, 9, 'moves');
+  let t = s;
+  list.forEach(({ from, to }) => {
+    assert(G.canMove(t, from, to, 1), `${from} to ${to}`);
+    t = G.move(t, from, to, 1);
+  });
+  eq(JSON.stringify(t), JSON.stringify(G.move(s, 0, 1, 4)), 'ends where the move does');
+  assert(list.some(({ to }) => to === 2), 'through the empty cascade');
+});
+
 test('a tap sends a card home, onto a card, to an empty cascade, then a cell', () => {
   eq(G.bestMove(state(['KS AH', 'TC']), 0, 1), G.HOME + 2, 'home');
   eq(G.bestMove(state(['KS 9H', 'TC']), 0, 1), 1, 'onto a card');
@@ -175,7 +188,13 @@ test('random play keeps every card in the game', () => {
       }
       if (options.length === 0) break;
       const [from, to, n] = options[Math.floor(rand() * options.length)];
+      let t = s;
+      G.steps(s, from, to, n).forEach((m) => {
+        assert(G.canMove(t, m.from, m.to, 1), `seed ${seed} step ${step}: one card ${m.from} to ${m.to}`);
+        t = G.move(t, m.from, m.to, 1);
+      });
       s = G.move(s, from, to, n);
+      eq(JSON.stringify(t), JSON.stringify(s), `seed ${seed} step ${step}: one at a time`);
       assert(G.isState(s), `seed ${seed} step ${step}`);
     }
   });
