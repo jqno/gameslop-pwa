@@ -166,7 +166,6 @@ button.key:disabled { opacity: .4; cursor: default; }
 }
 .overlay strong { font-size: 28px; line-height: 1.1; color: var(--accent); }
 .overlay p { margin: 0; color: var(--muted); }
-.overlay p#ov-stats { color: var(--ink); font-weight: 600; }
 #ov-buttons { display: flex; flex-direction: column; gap: 12px; }
 @keyframes pop {
   from { opacity: 0; transform: scale(.85); }
@@ -187,7 +186,6 @@ button.key:disabled { opacity: .4; cursor: default; }
   <div>
     <strong id="ov-title"></strong>
     <p id="ov-text"></p>
-    <p id="ov-stats"></p>
     <div id="ov-buttons"></div>
   </div>
 </div>
@@ -501,11 +499,11 @@ function isState(state) {
   return new Set(cards).size === 52;
 }
 
-/* progress holds the number of games won and the game under way, if any:
- * its deal number, where the cards are and the states before each move for
- * undo. Older saves also counted games played; that is ignored. */
+/* progress holds the game under way, if any: its deal number, where the
+ * cards are and the states before each move for undo. Older saves also
+ * counted games played and won; that is ignored. */
 function serialize(progress) {
-  return JSON.stringify({ version: 1, won: progress.won, game: progress.game });
+  return JSON.stringify({ version: 1, game: progress.game });
 }
 
 function deserialize(text) {
@@ -516,15 +514,11 @@ function deserialize(text) {
     return null;
   }
   if (!data || data.version !== 1) return null;
-  if (!Number.isInteger(data.won) || data.won < 0) return null;
   var game = data.game;
-  if (game === null) return { won: data.won, game: null };
+  if (game === null) return { game: null };
   if (!game || !Number.isInteger(game.number) || game.number < 1 || game.number > DEALS) return null;
   if (!isState(game.state) || !Array.isArray(game.history) || !game.history.every(isState)) return null;
-  return {
-    won: data.won,
-    game: { number: game.number, state: game.state, history: game.history }
-  };
+  return { game: { number: game.number, state: game.state, history: game.history } };
 }
 
 /* ------------------------------------------------------------------ *
@@ -536,7 +530,6 @@ function init() {
   var overlayEl = document.getElementById('overlay');
   var titleEl = document.getElementById('ov-title');
   var textEl = document.getElementById('ov-text');
-  var statsEl = document.getElementById('ov-stats');
   var buttonsEl = document.getElementById('ov-buttons');
   var metaEl = document.getElementById('meta');
   var undoBtn = document.getElementById('undo');
@@ -555,7 +548,7 @@ function init() {
   var TONES = ['\u{1F3FE}', '\u{1F3FC}', '\u{1F3FB}', '\u{1F3FF}'];
 
   var rand = rng(Math.floor(Math.random() * 4294967296));
-  var progress = load() || { won: 0, game: null };
+  var progress = load() || { game: null };
   var cardEls = [];
   var slotEls = [];
   /* Card and board sizes in px, from layout(). */
@@ -762,7 +755,6 @@ function init() {
     }
     busy = false;
     if (isWon(game.state)) {
-      progress.won += 1;
       progress.game = null;
       save();
       await wait(300);
@@ -864,13 +856,6 @@ function init() {
       el.addEventListener('click', button[1]);
       buttonsEl.appendChild(el);
     });
-    if (progress.won === 1) {
-      statsEl.textContent = 'Won 1 game';
-    } else if (progress.won > 1) {
-      statsEl.textContent = 'Won ' + progress.won + ' games';
-    } else {
-      statsEl.textContent = '';
-    }
     overlayEl.hidden = false;
     buttonsEl.firstChild.focus();
   }

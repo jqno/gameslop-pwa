@@ -202,15 +202,13 @@ test('random play keeps every card in the game', () => {
 
 test('serialize round-trips, and junk is rejected', () => {
   const game = { number: 7, state: G.deal(7), history: [G.deal(6)] };
-  const back = G.deserialize(G.serialize({ won: 1, game }));
+  const back = G.deserialize(G.serialize({ game }));
   eq(JSON.stringify(back.game), JSON.stringify(game), 'game');
-  eq(back.won, 1, 'won');
-  eq(G.deserialize(G.serialize({ won: 0, game: null })).game, null, 'no game under way');
-  const save = (changes, stats = {}) => JSON.stringify({ version: 1, won: 1, ...stats, game: { ...game, ...changes } });
+  eq(G.deserialize(G.serialize({ game: null })).game, null, 'no game under way');
+  const save = (changes, stats = {}) => JSON.stringify({ version: 1, ...stats, game: { ...game, ...changes } });
   eq(G.deserialize(null), null, 'null');
   eq(G.deserialize('not json'), null, 'garbage');
   eq(G.deserialize(save({}, { version: 2 })), null, 'another version');
-  eq(G.deserialize(save({}, { won: -1 })), null, 'negative won');
   eq(G.deserialize(save({ number: 0 })), null, 'no such deal');
   const missing = G.deal(7);
   missing.cascades[0].pop();
@@ -220,10 +218,10 @@ test('serialize round-trips, and junk is rejected', () => {
   eq(G.deserialize(save({ history: [twice] })), null, 'a card twice in the history');
 });
 
-test('an older save that counted games played still loads, without the count', () => {
+test('an older save that counted games played and won still loads, without the counts', () => {
   const game = { number: 7, state: G.deal(7), history: [] };
   const back = G.deserialize(JSON.stringify({ version: 1, played: 3, won: 1, game: { ...game, started: true } }));
-  eq(JSON.stringify(back), JSON.stringify({ won: 1, game }), 'loaded');
+  eq(JSON.stringify(back), JSON.stringify({ game }), 'loaded');
 });
 
 console.log(`\n${count - failures}/${count} passed`);
